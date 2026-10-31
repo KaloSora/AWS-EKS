@@ -23,6 +23,11 @@ resource "aws_eks_cluster" "this" {
 
   lifecycle {
     precondition {
+      condition     = length(setsubtract(toset(var.instance_types), toset(data.aws_ec2_instance_types.compatible.instance_types))) == 0
+      error_message = "Selected node instance types must be available in the provider region, support x86_64, and satisfy require_free_tier_eligible. Check instance_types before creating EKS."
+    }
+
+    precondition {
       condition     = !var.endpoint_public_access || length(var.endpoint_public_access_cidrs) > 0
       error_message = "Specify trusted endpoint_public_access_cidrs when enabling the public API."
     }

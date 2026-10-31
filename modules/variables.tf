@@ -67,6 +67,13 @@ variable "eks_public_access_cidrs" {
 variable "eks_node_instance_types" {
   type        = list(string)
   description = "List of instance types for EKS worker nodes"
+
+  validation {
+    condition = length(var.eks_node_instance_types) >= 1 && length(var.eks_node_instance_types) <= 20 && alltrue([
+      for instance_type in var.eks_node_instance_types : can(regex("^[a-z0-9-]+[.][a-z0-9]+$", instance_type))
+    ])
+    error_message = "Provide 1 to 20 valid EC2 instance type names."
+  }
 }
 
 variable "eks_node_scaling" {
@@ -81,4 +88,22 @@ variable "eks_node_scaling" {
 variable "vpc_endpoint_interface_services" {
   description = "Interface endpoint service suffixes to create in the private subnets"
   type        = set(string)
+}
+
+variable "nat_instance_type" {
+  description = "EC2 instance type for the shared NAT instance"
+  type        = string
+  default     = "t4g.micro"
+}
+
+variable "nat_instance_ami_id" {
+  description = "Optional pinned AL2023 NAT AMI; null uses the current AWS public SSM parameter"
+  type        = string
+  default     = null
+}
+
+variable "eks_require_free_tier_eligible" {
+  description = "Reject EKS instance types not labeled Free Tier eligible by AWS"
+  type        = bool
+  default     = true
 }

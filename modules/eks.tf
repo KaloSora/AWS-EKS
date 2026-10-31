@@ -10,14 +10,15 @@ module "eks" {
   endpoint_public_access       = true
   endpoint_public_access_cidrs = var.eks_public_access_cidrs
 
-  instance_types = var.eks_node_instance_types
-  capacity_type  = "ON_DEMAND"
-  node_scaling   = var.eks_node_scaling
+  instance_types             = var.eks_node_instance_types
+  require_free_tier_eligible = var.eks_require_free_tier_eligible
+  capacity_type              = "ON_DEMAND"
+  node_scaling               = var.eks_node_scaling
   tags = {
     Environment = var.aws_env
     ManagedBy   = "Terraform"
   }
 
-  # Private nodes need ECR/S3 and AWS API connectivity before they start.
-  depends_on = [module.vpc_endpoint]
+  # Private nodes use NAT for AWS APIs/internet and the Gateway endpoint for S3.
+  depends_on = [terraform_data.eks_preflight, module.ec2_nat_instance]
 }
