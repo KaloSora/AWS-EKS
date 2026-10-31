@@ -3,7 +3,7 @@
 
 load_eks_context() {
     local context
-    context="$(terraform -chdir="$TERRAFORM_DIR" console -var-file="dev.tfvars" <<'HCL'
+    context="$(terraform -chdir="$TF_DIR" console -var-file="$TF_VAR_FILE" <<'HCL'
 jsonencode({region = var.aws_region, cluster_name = "${var.aws_env}-eks"})
 HCL
 )" || return $?
@@ -38,7 +38,7 @@ list_eks_nodegroups() {
 assert_nodegroups_tracked() {
     local managed_groups untracked
     EKS_NODEGROUPS="$(list_eks_nodegroups)" || return $?
-    managed_groups="$(terraform -chdir="$TERRAFORM_DIR" show -json | jq -c \
+    managed_groups="$(terraform -chdir="$TF_DIR" show -json | jq -c \
         --arg cluster "$EKS_CLUSTER_NAME" \
         '[.. | objects | select(.type? == "aws_eks_node_group") | .values? |
           select(.cluster_name? == $cluster) | .node_group_name |

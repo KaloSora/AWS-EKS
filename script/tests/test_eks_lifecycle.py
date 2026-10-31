@@ -48,12 +48,14 @@ elif kind == 'aws':
 
 
 class LifecycleTests(unittest.TestCase):
-    def run_script(self, script, mode='normal'):
+    def run_script(self, script, mode='normal', auto_approve='true', confirm=None):
         with tempfile.TemporaryDirectory(prefix='eks lifecycle test ') as tmp:
             root = Path(tmp)
             scripts = root/'project'/'script'
             scripts.mkdir(parents=True)
             (scripts.parent/'modules').mkdir()
+            for name in ['dev.tfvars', 'dev.s3.tfbackend']:
+                (scripts.parent/'modules'/name).write_text('# fixture\n')
             for name in [script, 'eks_lifecycle.sh']:
                 shutil.copy2(SCRIPT_DIR/name, scripts/name)
             # This replaces the authentication script; no real auth file is read.
@@ -70,12 +72,13 @@ class LifecycleTests(unittest.TestCase):
             trace = root/'trace'
             env = {
                 'PATH':str(binaries)+':/usr/bin:/bin',
+                'TF_AUTO_APPROVE':auto_approve,
                 'TEST_MODE':mode, 'TEST_TRACE':str(trace),
                 'TEST_DELETED':str(root/'deleted'), 'TMPDIR':str(root),
             }
             result = subprocess.run(['/bin/bash',str(scripts/script)],cwd='/tmp',
-                                    env=env,capture_output=True,text=True)
-            calls = [json.loads(line) for line in trace.read_text().splitlines()]
+                                    env=env,input=confirm if confirm is not None else "",capture_output=True,text=True)
+            calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
             return result, calls
 
     def destroys(self, calls):
@@ -140,6 +143,41 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_create.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(any('apply' in c for c in calls if c[0]=='terraform'))
+
+
+    def test_destroy_requires_confirmation_by_default(self):
+        result,calls = self.run_script('run_infra_destroy.sh', auto_approve='false', confirm='no\n')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(self.destroys(calls),[])
+        self.assertIn('Destroy cancelled.',result.stdout)
+
+    def test_destroy_confirmation_eof_cancels(self):
+        result,calls = self.run_script('run_infra_destroy.sh', auto_approve='false')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(self.destroys(calls),[])
+
+    def test_destroy_confirmation_accepts_exact_keyword(self):
+        result,calls = self.run_script('run_infra_destroy.sh', auto_approve='false', confirm='destroy\n')
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertEqual(len(self.destroys(calls)),3)
+
+    def test_create_preserves_terraform_confirmation_by_default(self):
+        result,calls = self.run_script('run_infra_create.sh', auto_approve='false')
+        self.assertEqual(result.returncode,0,result.stderr)
+        apply = next(c for c in calls if c[0]=='terraform' and 'apply' in c)
+        self.assertNotIn('-auto-approve',apply)
+
+    def test_create_auto_approve_option(self):
+        result,calls = self.run_script('run_infra_create.sh')
+        self.assertEqual(result.returncode,0,result.stderr)
+        apply = next(c for c in calls if c[0]=='terraform' and 'apply' in c)
+        self.assertIn('-auto-approve',apply)
+
+    def test_invalid_auto_approve_fails_before_cloud_calls(self):
+        result,calls = self.run_script('run_infra_destroy.sh', auto_approve='yes')
+        self.assertNotEqual(result.returncode,0)
+        self.assertEqual(calls,[])
+        self.assertIn('must be true or false',result.stderr)
 
 
 if __name__ == '__main__':
