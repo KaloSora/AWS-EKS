@@ -60,3 +60,12 @@ terraform -chdir="$TERRAFORM_DIR" validate
 
 echo "[PASS] Terraform configuration is valid"
 
+# ------------------------------------------------------------
+# STEP 2 - Create EKS and Required Dependencies
+# ------------------------------------------------------------
+
+log "Create EKS Managed Node Group Cluster"
+
+run_step "2 - Create EKS" terraform -chdir="$TERRAFORM_DIR" apply \
+    -var-file="dev.tfvars" \
+    -target=module.eks

@@ -1,0 +1,20 @@
+module "eks" {
+  source = "./eks"
+
+  cluster_name       = "${var.aws_env}-eks"
+  kubernetes_version = var.eks_kubernetes_version
+  private_subnet_ids = module.vpc.private_subnet_ids
+
+  admin_principal_arn = var.eks_admin_principal_arn
+
+  endpoint_public_access       = true
+  endpoint_public_access_cidrs = var.eks_public_access_cidrs
+
+  instance_types = var.eks_node_instance_types
+  capacity_type  = "ON_DEMAND"
+  node_scaling = var.eks_node_scaling
+  tags = {
+    Environment = var.aws_env
+    ManagedBy   = "Terraform"
+  }
+}
