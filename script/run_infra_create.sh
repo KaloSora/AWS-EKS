@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 TERRAFORM_DIR="${SCRIPT_DIR}/../modules"
 
 # Source authentication in this process so Terraform inherits the role credentials.
+unset AWS_SESSION_TOKEN AWS_SECURITY_TOKEN
 source "${SCRIPT_DIR}/run_aws_auth.sh"
 
 # ------------------------------------------------------------
