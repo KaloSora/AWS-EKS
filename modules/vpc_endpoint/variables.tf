@@ -43,11 +43,11 @@ variable "interface_services" {
   ]
 
   validation {
-    condition = length(var.interface_services) > 0 && alltrue([
+    condition = alltrue([
       for service in var.interface_services :
       can(regex("^[a-z0-9][a-z0-9.-]*$", service)) && service != "s3"
     ])
-    error_message = "Provide at least one service suffix (for example ecr.api). S3 is managed separately as a Gateway endpoint."
+    error_message = "Use service suffixes (for example ecr.api), or an empty set to disable Interface endpoints. S3 is managed separately as a Gateway endpoint."
   }
 }
 

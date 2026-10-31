@@ -20,7 +20,7 @@ Creates private AWS service connectivity without a NAT Gateway. The caller suppl
 | `eks-auth` | Interface | EKS Pod Identity credential requests |
 | `s3` | Gateway | S3 access, including ECR image layer downloads |
 
-The root module reads the Interface service list from `vpc_endpoint_interface_services` in `modules/dev.tfvars`. S3 Gateway access is enabled separately. The default configuration creates 12 Interface endpoints, with one ENI per endpoint in each selected AZ, and one S3 Gateway endpoint. With the current three-AZ VPC, this means 36 Interface endpoint ENIs. Interface endpoints incur per-AZ hourly and data-processing charges; remove unused services from the list to reduce cost.
+The root module reads the Interface service list from `vpc_endpoint_interface_services` in `modules/dev.tfvars`. The development configuration now sets this list to `[]` because a shared EC2 NAT instance provides egress; no Interface endpoints are created in that configuration. The standalone module defaults below remain available when private service connectivity is needed. S3 Gateway access is enabled separately. The standalone module default creates 12 Interface endpoints, with one ENI per endpoint in each selected AZ, and one S3 Gateway endpoint. With the current three-AZ VPC, this means 36 Interface endpoint ENIs. Interface endpoints incur per-AZ hourly and data-processing charges; remove unused services from the list to reduce cost.
 
 `ec2messages` is not enabled by default. Current SSM Agents use `ssmmessages`; older agents may also require `ec2messages` in regions where it is supported. Add it to the service list only when needed. Additional services such as `kms`, `secretsmanager`, or `autoscaling` can be added using their service suffixes. Regional service names and AZ support are checked using the AWS provider.
 
@@ -71,7 +71,7 @@ terraform -chdir=modules plan -var-file="dev.tfvars" -target=module.vpc_endpoint
 terraform -chdir=modules apply -var-file="dev.tfvars" -target=module.vpc_endpoint
 ```
 
-Targeting is intended for staged bootstrap or recovery. Follow it with a full plan to check the remaining configuration. No NAT resource is created by this module. When NAT is added later, S3 Gateway routes and Interface private DNS can remain in place.
+Targeting is intended for staged bootstrap or recovery. Follow it with a full plan to check the remaining configuration. No NAT resource is created by this module. The root configuration now uses an EC2 NAT instance. S3 Gateway routes remain in place; paid Interface endpoints can be enabled explicitly if needed.
 
 ## What Endpoints Do Not Provide
 
@@ -80,7 +80,7 @@ Targeting is intended for staged bootstrap or recovery. Follow it with a full pl
 - **EBS:** The `ec2` endpoint serves volume lifecycle operations used by the EBS CSI driver. The `ebs` endpoint serves EBS direct snapshot APIs. Neither installs the CSI driver, creates volumes, or grants its IAM permissions.
 - **CloudWatch:** Endpoints provide API connectivity; agents, collectors, log groups, and IAM permissions are configured separately.
 - **EKS:** Keep private Kubernetes API access enabled for node connectivity. The `eks` Interface endpoint is for AWS management APIs, not the Kubernetes API. IRSA clients must use regional STS endpoints; Pod Identity also requires its agent and associations.
-- **Internet access:** Docker Hub, GitHub, package repositories, and other external destinations remain unreachable. Mirror required images into private ECR before deploying them. ECR pull-through cache misses can require internet access; endpoints alone do not cover all upstream fetches.
+- **Internet access:** Endpoints alone do not provide access to Docker Hub, GitHub, package repositories, or other external destinations; the root NAT instance provides that access. Mirror required images into private ECR before deploying them. ECR pull-through cache misses can require internet access; endpoints alone do not cover all upstream fetches.
 
 ## References
 
