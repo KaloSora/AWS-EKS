@@ -19,10 +19,11 @@ availability_zones = [
 ]
 
 # EKS variable
-eks_kubernetes_version  = "1.35"
-eks_admin_principal_arn = "arn:aws:iam::823058656952:role/AWS-InfraDevOps"
-eks_public_access_cidrs = ["103.151.172.76/32"]
-eks_node_instance_types = ["t3.medium"]
+eks_kubernetes_version         = "1.35"
+eks_admin_principal_arn        = "arn:aws:iam::823058656952:role/AWS-InfraDevOps"
+eks_public_access_cidrs        = ["103.151.172.76/32"]
+eks_node_instance_types        = ["t3.small"]
+eks_require_free_tier_eligible = true
 eks_node_scaling = {
   min_size     = 1
   desired_size = 2
