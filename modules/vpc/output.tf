@@ -29,3 +29,8 @@ output "subnets_by_az" {
     }
   }
 }
+
+output "private_route_table_ids" {
+  description = "Private route table IDs keyed by AZ, for Gateway endpoints and future NAT routes"
+  value       = { for az, route_table in aws_route_table.private : az => route_table.id }
+}

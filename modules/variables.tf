@@ -55,7 +55,7 @@ variable "eks_kubernetes_version" {
 }
 
 variable "eks_admin_principal_arn" {
-  type = string
+  type        = string
   description = "ARN of the IAM principal with admin access to the EKS cluster"
 }
 
@@ -76,4 +76,9 @@ variable "eks_node_scaling" {
     desired_size = number
     max_size     = number
   })
+}
+
+variable "vpc_endpoint_interface_services" {
+  description = "Interface endpoint service suffixes to create in the private subnets"
+  type        = set(string)
 }

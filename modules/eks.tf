@@ -12,9 +12,12 @@ module "eks" {
 
   instance_types = var.eks_node_instance_types
   capacity_type  = "ON_DEMAND"
-  node_scaling = var.eks_node_scaling
+  node_scaling   = var.eks_node_scaling
   tags = {
     Environment = var.aws_env
     ManagedBy   = "Terraform"
   }
+
+  # Private nodes need ECR/S3 and AWS API connectivity before they start.
+  depends_on = [module.vpc_endpoint]
 }

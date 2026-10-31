@@ -13,17 +13,19 @@ Creates an EKS control plane and an EC2 managed node group using native AWS Terr
 Provide private subnets in at least two Availability Zones within the same VPC. The VPC must have DNS support and DNS hostnames enabled.
 Nodes need access to ECR, S3, and AWS APIs through a NAT Gateway. Alternatively, configure all required VPC endpoints, private DNS, and security group rules.
 
-**The private subnets in this repository’s `modules/vpc` currently have only local routes, with no NAT or VPC endpoints. Passing those outputs directly to this module will prevent nodes from starting successfully. Configure outbound connectivity before deployment, and use dependencies such as `depends_on` in the caller to ensure routes are ready before creating EKS.**
+The root configuration now connects `module.vpc_endpoint` to the private subnets and makes EKS depend on it. This provides private connectivity to the configured AWS services without NAT. See [the VPC endpoint module](../vpc_endpoint/README.md) for the service list and limitations. External image registries and other internet destinations remain unreachable until NAT or another egress path is added.
 
 With a private-only API endpoint, run kubectl inside the VPC or connect through VPN, Direct Connect, or another private connection. Security group rules must allow TCP port 443 from the client to the control plane.
 
 ## Usage in the Existing Root Module
 
-After meeting the network prerequisites above, place the following configuration in `modules/eks.tf`. Replace the placeholder ARN and CIDR:
+The root configuration already calls this module. The following example shows the required inputs; replace the placeholder ARN and CIDR when adapting it:
 
 ```hcl
 module "eks" {
   source = "./eks"
+
+  depends_on = [module.vpc_endpoint]
 
   cluster_name       = "${var.aws_env}-eks"
   kubernetes_version = "1.35"
