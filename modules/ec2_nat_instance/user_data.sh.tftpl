@@ -1,0 +1,43 @@
+#!/bin/bash
+set -Eeuo pipefail
+
+# Retry transient repository/network failures during the first boot.
+for attempt in 1 2 3 4 5; do
+    if dnf install -y iptables-services; then
+        break
+    fi
+    if [ "$attempt" -eq 5 ]; then
+        echo "Failed to install iptables-services" >&2
+        exit 1
+    fi
+    sleep 10
+done
+
+cat > /etc/sysctl.d/90-nat-instance.conf <<'SYSCTL'
+net.ipv4.ip_forward = 1
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+SYSCTL
+sysctl --system
+
+systemctl enable --now iptables
+nat_interface="$(ip -4 route show default | awk 'NR == 1 {print $5}')"
+test -n "$nat_interface"
+
+# Replace the default FORWARD chain (which can contain REJECT rules).
+# Preserve host INPUT/OUTPUT rules; network access is restricted by the SG.
+iptables -F FORWARD
+iptables -P FORWARD DROP
+iptables -A FORWARD -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+%{ for cidr in private_cidrs ~}
+iptables -A FORWARD -s '${cidr}' -o "$nat_interface" -j ACCEPT
+if ! iptables -t nat -C POSTROUTING -s '${cidr}' -o "$nat_interface" -j MASQUERADE 2>/dev/null; then
+    iptables -t nat -A POSTROUTING -s '${cidr}' -o "$nat_interface" -j MASQUERADE
+fi
+%{ endfor ~}
+
+# Persist rules across reboots; do not rely on cloud-init running again.
+iptables-save > /etc/sysconfig/iptables
+systemctl enable --now amazon-ssm-agent
+mkdir -p /var/lib/nat-instance
+touch /var/lib/nat-instance/ready
