@@ -31,16 +31,16 @@ eks_node_scaling = {
 
 # Private AWS API connectivity; S3 Gateway endpoint is enabled separately.
 vpc_endpoint_interface_services = [
-  "ssm",
-  "ssmmessages",
-  "ec2",
-  "ebs",
-  "elasticfilesystem",
-  "logs",
-  "monitoring",
-  "ecr.api",
-  "ecr.dkr",
-  "sts",
-  "eks",
-  "eks-auth",
+  # "ssm",
+  # "ssmmessages",
+  # "ec2",
+  # "ebs",
+  # "elasticfilesystem",
+  # "logs",
+  # "monitoring",
+  # "ecr.api",
+  # "ecr.dkr",
+  # "sts",
+  # "eks",
+  # "eks-auth",
 ]
