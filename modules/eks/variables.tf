@@ -48,7 +48,20 @@ variable "endpoint_public_access_cidrs" {
 variable "instance_types" {
   description = "x86_64 instance types compatible with the AL2023 node AMI"
   type        = list(string)
-  default     = ["t3.medium"]
+  default     = ["t3.small"]
+
+  validation {
+    condition = length(var.instance_types) >= 1 && length(var.instance_types) <= 20 && alltrue([
+      for instance_type in var.instance_types : can(regex("^[a-z0-9-]+[.][a-z0-9]+$", instance_type))
+    ])
+    error_message = "Provide 1 to 20 valid EC2 instance type names."
+  }
+}
+
+variable "require_free_tier_eligible" {
+  description = "Require AWS to label every selected instance type Free Tier eligible; this does not guarantee zero charges or sufficient account quota"
+  type        = bool
+  default     = false
 }
 
 variable "capacity_type" {
