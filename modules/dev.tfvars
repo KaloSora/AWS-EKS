@@ -26,7 +26,7 @@ eks_node_instance_types        = ["t3.small"]
 eks_require_free_tier_eligible = true
 eks_node_scaling = {
   min_size     = 1
-  desired_size = 2
+  desired_size = 1
   max_size     = 3
 }
 
