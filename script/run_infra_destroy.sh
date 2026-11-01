@@ -12,7 +12,7 @@ set -Eeuo pipefail
 # Destroy order:
 #   1. EKS node group, then wait for AWS deletion confirmation
 #   2. EKS control plane and IAM resources
-#   3. NAT EC2 module resources
+#   3. NAT EC2 module resources (also when nat_instance_enable=false)
 # ============================================================
 
 # ------------------------------------------------------------
@@ -132,6 +132,9 @@ echo "AWS region         : ${EKS_REGION}"
 echo "EKS cluster        : ${EKS_CLUSTER_NAME}"
 echo "[PASS] AWS node groups match the current Terraform state"
 
+log "NAT Configuration"
+print_nat_status "destroy"
+
 # ------------------------------------------------------------
 # Confirmation
 # ------------------------------------------------------------
@@ -140,7 +143,8 @@ log "DESTROY WARNING"
 echo "The following Terraform targets will be destroyed:"
 echo "  1. module.eks.aws_eks_node_group.this and its dependents"
 echo "  2. module.eks (control plane and IAM resources)"
-echo "  3. module.ec2_nat_instance (EC2, EIP, ENI, IAM and private default routes)"
+echo "  3. module.ec2_nat_instance (tracked EC2, EIP, ENI, IAM and private default routes)"
+echo "     nat_instance_enable=${NAT_INSTANCE_ENABLE}; this setting does not skip existing NAT cleanup."
 echo
 echo "VPC, Internet Gateway, subnets, budget and S3 Gateway endpoint are retained."
 echo "Remove workload-created load balancers and review persistent data first."

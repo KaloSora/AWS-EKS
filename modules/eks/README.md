@@ -13,7 +13,9 @@ Creates an EKS control plane and an EC2 managed node group using native AWS Terr
 Provide private subnets in at least two Availability Zones within the same VPC. The VPC must have DNS support and DNS hostnames enabled.
 Nodes need access to ECR, S3, and AWS APIs through a NAT Gateway. Alternatively, configure all required VPC endpoints, private DNS, and security group rules.
 
-The root configuration now connects a shared [EC2 NAT instance](../ec2_nat_instance/README.md) to the private subnet default routes. EKS depends on the NAT module and the instance-type preflight resource. The S3 Gateway endpoint is configured separately. The development configuration disables paid Interface endpoints; AWS public APIs and external image registries are reached through NAT. Nodes keep private addresses. Confirm NAT cloud-init has completed before starting nodes; a running EC2 instance alone does not prove NAT is ready.
+When `nat_instance_enable = true` (the root variable default), the root configuration connects a shared [EC2 NAT instance](../ec2_nat_instance/README.md) to the private subnet default routes. EKS depends on the NAT module and the instance-type preflight resource. The S3 Gateway endpoint is configured separately. The development configuration disables paid Interface endpoints; AWS public APIs and external image registries are reached through NAT. Nodes keep private addresses. Confirm NAT cloud-init has completed before starting nodes; a running EC2 instance alone does not prove NAT is ready.
+
+The development tfvars temporarily set `nat_instance_enable = false` for initial configuration validation. With the Interface endpoint list also empty, private node bootstrap, image pulls and CSI AWS API operations may fail. Re-enable NAT or provide complete alternate connectivity before validating a working cluster. Disabling an already-deployed NAT plans removal of its resources and private default routes.
 
 With a private-only API endpoint, run kubectl inside the VPC or connect through VPN, Direct Connect, or another private connection. Security group rules must allow TCP port 443 from the client to the control plane.
 

@@ -90,6 +90,13 @@ variable "vpc_endpoint_interface_services" {
   type        = set(string)
 }
 
+variable "nat_instance_enable" {
+  description = "Create the shared NAT instance and private default routes; disabling requires alternate egress for private EKS nodes"
+  type        = bool
+  default     = true
+  nullable    = false
+}
+
 variable "nat_instance_type" {
   description = "EC2 instance type for the shared NAT instance"
   type        = string

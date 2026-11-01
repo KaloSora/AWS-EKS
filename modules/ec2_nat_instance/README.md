@@ -21,12 +21,13 @@ The caller must ensure the public subnet has a working Internet Gateway route be
 
 ## Root Configuration
 
-`modules/ec2_nat_instance.tf` places NAT in the first configured public subnet and connects every private route table. EKS nodes remain private. `modules/eks.tf` depends on both NAT and the retained S3 Gateway endpoint.
+`modules/ec2_nat_instance.tf` places NAT in the first configured public subnet and connects every private route table. EKS nodes remain private. `modules/eks.tf` depends on the NAT module when enabled; S3 Gateway access is configured separately.
 
 Configure the instance in `modules/dev.tfvars`:
 
 ```hcl
-nat_instance_type = "t4g.micro"
+nat_instance_enable = true
+nat_instance_type   = "t4g.micro"
 # Optional: pin an AL2023 AMI that matches the chosen architecture.
 # nat_instance_ami_id = "ami-..."
 
@@ -87,3 +88,13 @@ If endpoints still exist in AWS, bootstrap and verify NAT first, then review the
 Charges include EC2 instance hours, EBS storage, the public IPv4 address, and applicable data transfer. There is no NAT Gateway processing fee. A single instance is a single point of failure, and clients in other AZs can incur cross-AZ data transfer charges. Size the instance for the expected traffic, monitor instance health, and maintain OS updates. This design is intended for small development environments; production deployments generally need a resilient egress design.
 
 References: [AWS NAT instance guide](https://docs.aws.amazon.com/vpc/latest/userguide/work-with-nat-instances.html), [AL2023 package management](https://docs.aws.amazon.com/linux/al2023/ug/package-management.html).
+
+## Temporarily Disabling NAT
+
+The root `nat_instance_enable` boolean defaults to `true`; `modules/dev.tfvars` currently overrides it to `false` for initial configuration validation. When disabled, no NAT module instance is created: EC2, ENI, EIP, IAM, security groups and private default routes are omitted. `nat_instance_id` and `nat_public_ip` evaluate to null and are omitted from Terraform outputs. The VPC, public IGW routing and separately configured S3 Gateway endpoint remain managed.
+
+Private EKS nodes retain private addresses. With NAT disabled and the development Interface endpoint list empty, node bootstrap, ECR image pulls and CSI AWS API access may fail. A private Kubernetes API endpoint and S3 Gateway endpoint alone do not provide all required connectivity. Re-enable NAT or separately configure the required endpoints and any external registry access before validating a functioning node group. NAT readiness checks above apply only when enabled.
+
+If NAT is already deployed, setting the flag to `false` proposes deletion of the entire NAT module, including its EIP and private default routes, interrupting private-subnet egress. Inspect the actual plan before applying. Re-enabling after deletion creates a new EIP; it does not preserve the previous public IP.
+
+Adding module `count` changes its address from `module.ec2_nat_instance` to `module.ec2_nat_instance[0]`. If resources were tracked at the old address and NAT remains enabled, review an explicit address migration before applying to avoid unintended replacement. No state migration or infrastructure changes are performed by this code edit.

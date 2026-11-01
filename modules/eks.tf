@@ -21,6 +21,7 @@ module "eks" {
     ManagedBy   = "Terraform"
   }
 
-  # Private nodes use NAT for AWS APIs/internet and the Gateway endpoint for S3.
+  # Wait for NAT when enabled. When disabled, private nodes require alternate
+  # AWS API/image connectivity; the S3 Gateway endpoint alone is insufficient.
   depends_on = [terraform_data.eks_preflight, module.ec2_nat_instance]
 }

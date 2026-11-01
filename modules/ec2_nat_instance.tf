@@ -1,5 +1,6 @@
 module "ec2_nat_instance" {
   source = "./ec2_nat_instance"
+  count  = var.nat_instance_enable ? 1 : 0
 
   name             = var.aws_env
   vpc_id           = module.vpc.vpc_id
@@ -25,10 +26,10 @@ module "ec2_nat_instance" {
 
 output "nat_instance_id" {
   description = "NAT instance ID for SSM diagnostics"
-  value       = module.ec2_nat_instance.instance_id
+  value       = var.nat_instance_enable ? module.ec2_nat_instance[0].instance_id : null
 }
 
 output "nat_public_ip" {
   description = "Public egress IP shared by private nodes"
-  value       = module.ec2_nat_instance.public_ip
+  value       = var.nat_instance_enable ? module.ec2_nat_instance[0].public_ip : null
 }

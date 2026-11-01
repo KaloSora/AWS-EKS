@@ -11,7 +11,7 @@ set -Eeuo pipefail
 #
 # Runbook:
 #   1. Initialize/validate Terraform and check AWS node group state
-#   2. Create module.eks and its required dependencies
+#   2. Report nat_instance_enable and create module.eks dependencies
 # ============================================================
 
 # ------------------------------------------------------------
@@ -117,6 +117,9 @@ assert_nodegroups_tracked
 echo "AWS region         : ${EKS_REGION}"
 echo "EKS cluster        : ${EKS_CLUSTER_NAME}"
 echo "[PASS] AWS node groups match the current Terraform state"
+
+log "NAT Configuration"
+print_nat_status "create"
 
 # ------------------------------------------------------------
 # STEP 1 - Create EKS and Required Dependencies

@@ -47,7 +47,8 @@ vpc_endpoint_interface_services = [
 ]
 
 # Single shared AL2023 NAT instance in the first configured public subnet.
-nat_instance_type = "t4g.micro"
+nat_instance_enable = false
+nat_instance_type   = "t4g.micro"
 # nat_instance_ami_id = "ami-0f3e7b8c1e5d2a1b2" # By default will get the latest AL2023 AMI for the region.
 
 eks_csi_enabled = true

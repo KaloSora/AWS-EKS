@@ -21,8 +21,16 @@ mode = os.environ['TEST_MODE']
 marker = Path(os.environ['TEST_DELETED'])
 if kind == 'terraform':
     if 'console' in args:
-        print(json.dumps(json.dumps({'region':'ap-southeast-1','cluster_name':'dev-eks'})))
+        expression = sys.stdin.read()
+        assert 'nat_instance_enable = var.nat_instance_enable' in expression
+        if mode == 'console_failure': sys.exit(2)
+        context = {'region':'ap-southeast-1','cluster_name':'dev-eks',
+                   'nat_instance_enable':json.loads(os.environ['TEST_NAT_ENABLED'])}
+        if mode == 'invalid_nat': context['nat_instance_enable'] = 'false'
+        if mode == 'missing_nat': context.pop('nat_instance_enable')
+        print(json.dumps(json.dumps(context)))
     elif 'show' in args:
+        if mode == 'state_failure': sys.exit(2)
         groups = [] if mode == 'orphan' else [{'type':'aws_eks_node_group','values':{'cluster_name':'dev-eks','node_group_name':'dev-eks-general'}}]
         print(json.dumps({'values':{'root_module':{'child_modules':[{'resources':groups}]}}}))
     elif 'destroy' in args and '-target=module.eks.aws_eks_node_group.this' in args:
@@ -48,7 +56,7 @@ elif kind == 'aws':
 
 
 class LifecycleTests(unittest.TestCase):
-    def run_script(self, script, mode='normal', auto_approve='true', confirm=None):
+    def run_script(self, script, mode='normal', auto_approve='true', confirm=None, nat_enabled=True):
         with tempfile.TemporaryDirectory(prefix='eks lifecycle test ') as tmp:
             root = Path(tmp)
             scripts = root/'project'/'script'
@@ -74,6 +82,7 @@ class LifecycleTests(unittest.TestCase):
                 'PATH':str(binaries)+':/usr/bin:/bin',
                 'TF_AUTO_APPROVE':auto_approve,
                 'TEST_MODE':mode, 'TEST_TRACE':str(trace),
+                'TEST_NAT_ENABLED':json.dumps(nat_enabled),
                 'TEST_DELETED':str(root/'deleted'), 'TMPDIR':str(root),
             }
             result = subprocess.run(['/bin/bash',str(scripts/script)],cwd='/tmp',
@@ -178,6 +187,46 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(calls,[])
         self.assertIn('must be true or false',result.stderr)
+
+    def test_nat_status_for_both_scripts_and_boolean_values(self):
+        for script in ['run_infra_create.sh', 'run_infra_destroy.sh']:
+            for enabled in [True, False]:
+                with self.subTest(script=script, enabled=enabled):
+                    result, calls = self.run_script(script, nat_enabled=enabled)
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    status = f'NAT instance enabled: {str(enabled).lower()} (Terraform configuration)'
+                    self.assertIn(status, result.stdout)
+                    mutation = 'apply' if script == 'run_infra_create.sh' else 'destroy'
+                    self.assertLess(result.stdout.index(status), result.stdout.index('STEP 1/'))
+                    self.assertTrue(any(mutation in c for c in calls if c[0] == 'terraform'))
+                    if script == 'run_infra_create.sh':
+                        explanation = 'Verify NAT cloud-init readiness' if enabled else 'NAT creation is disabled'
+                        self.assertIn(explanation, result.stdout)
+                        if not enabled:
+                            self.assertIn('S3 Gateway endpoint alone is insufficient', result.stdout)
+                            self.assertIn('this apply can remove it', result.stdout)
+                    else:
+                        self.assertIn('regardless of this setting', result.stdout)
+                        self.assertIn(f'nat_instance_enable={str(enabled).lower()}', result.stdout)
+                        self.assertEqual(self.destroys(calls)[-1], '-target=module.ec2_nat_instance')
+
+    def test_nat_context_errors_stop_before_aws_or_mutations(self):
+        for script in ['run_infra_create.sh', 'run_infra_destroy.sh']:
+            for mode in ['console_failure', 'invalid_nat', 'missing_nat']:
+                with self.subTest(script=script, mode=mode):
+                    result, calls = self.run_script(script, mode)
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertFalse(any(c[0] == 'aws' for c in calls))
+                    self.assertFalse(any('apply' in c or 'destroy' in c for c in calls if c[0] == 'terraform'))
+                    self.assertNotIn('COMPLETED', result.stdout)
+
+    def test_state_read_failure_stops_create_and_destroy(self):
+        for script in ['run_infra_create.sh', 'run_infra_destroy.sh']:
+            with self.subTest(script=script):
+                result, calls = self.run_script(script, 'state_failure')
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(any('apply' in c or 'destroy' in c for c in calls if c[0] == 'terraform'))
+                self.assertNotIn('COMPLETED', result.stdout)
 
 
 if __name__ == '__main__':
