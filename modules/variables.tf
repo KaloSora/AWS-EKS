@@ -159,3 +159,23 @@ variable "eks_efs_throughput_mode" {
     error_message = "eks_efs_throughput_mode must be bursting or elastic."
   }
 }
+
+variable "cicd_components" {
+  description = "CI/CD component inventory consumed by the generic Helm component module"
+  sensitive   = true
+
+  type = map(object({
+    enabled         = bool
+    release_name    = string
+    namespace       = string
+    repository      = string
+    chart           = string
+    version         = string
+    timeout         = number
+    atomic          = bool
+    wait            = bool
+    wait_for_jobs   = bool
+    value_templates = list(string)
+    config          = map(string)
+  }))
+}

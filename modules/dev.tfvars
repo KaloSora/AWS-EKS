@@ -26,8 +26,8 @@ eks_node_instance_types        = ["t3.small"]
 eks_require_free_tier_eligible = true
 eks_node_scaling = {
   min_size     = 1
-  desired_size = 1
-  max_size     = 3
+  desired_size = 3
+  max_size     = 5
 }
 
 # Private AWS API connectivity; S3 Gateway endpoint is enabled separately.
@@ -62,3 +62,23 @@ eks_kubeconfig_file = "eks_kube_config/config"
 # Regional EFS is retained across targeted EKS teardown/recreation.
 eks_efs_file_system_name = "dev-eks-efs"
 eks_efs_throughput_mode  = "bursting"
+
+cicd_components = {
+  argocd = {
+    enabled         = true
+    release_name    = "argocd"
+    namespace       = "argocd"
+    repository      = "https://argoproj.github.io/argo-helm"
+    chart           = "argo-cd"
+    version         = "10.10.3"
+    timeout         = 600
+    atomic          = true
+    wait            = true
+    wait_for_jobs   = false
+    value_templates = ["argocd.yaml"]
+    config = {
+      argocd_url            = "argocd.core.com"
+      argocd_admin_password = "ArgoCD12345"
+    }
+  }
+}
