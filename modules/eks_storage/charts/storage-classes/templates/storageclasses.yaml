@@ -1,0 +1,37 @@
+{{- if eq .Values.ebs.name .Values.efs.name }}
+{{- fail "EBS and EFS StorageClass names must be different" }}
+{{- end }}
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.ebs.name | quote }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+  csi.storage.k8s.io/fstype: ext4
+reclaimPolicy: {{ .Values.ebs.reclaimPolicy }}
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+---
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: {{ .Values.efs.name | quote }}
+  labels:
+    app.kubernetes.io/managed-by: {{ .Release.Service | quote }}
+    app.kubernetes.io/instance: {{ .Release.Name | quote }}
+provisioner: efs.csi.aws.com
+parameters:
+  provisioningMode: efs-ap
+  fileSystemId: {{ required "efs.fileSystemId is required" .Values.efs.fileSystemId | quote }}
+  directoryPerms: "700"
+  ensureUniqueDirectory: "true"
+  reuseAccessPoint: "false"
+mountOptions:
+  - tls
+reclaimPolicy: {{ .Values.efs.reclaimPolicy }}
+volumeBindingMode: Immediate

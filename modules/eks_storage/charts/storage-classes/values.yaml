@@ -1,0 +1,7 @@
+ebs:
+  name: ebs-sc
+  reclaimPolicy: Retain
+efs:
+  name: efs-sc
+  fileSystemId: ""
+  reclaimPolicy: Retain

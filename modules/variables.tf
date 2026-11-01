@@ -131,3 +131,31 @@ variable "csi_addon_versions" {
   default  = {}
   nullable = false
 }
+
+variable "eks_kubeconfig_file" {
+  description = "Kubeconfig path relative to the Terraform root directory"
+  type        = string
+}
+
+variable "eks_efs_file_system_name" {
+  description = "Name tag for the Regional EFS file system used by EKS"
+  type        = string
+  nullable    = false
+
+  validation {
+    condition     = length(trimspace(var.eks_efs_file_system_name)) > 0 && length(var.eks_efs_file_system_name) <= 256
+    error_message = "eks_efs_file_system_name must be non-empty and at most 256 characters."
+  }
+}
+
+variable "eks_efs_throughput_mode" {
+  description = "EFS throughput: bursting for storage-based throughput, or elastic for I/O billing"
+  type        = string
+  default     = "bursting"
+  nullable    = false
+
+  validation {
+    condition     = contains(["bursting", "elastic"], var.eks_efs_throughput_mode)
+    error_message = "eks_efs_throughput_mode must be bursting or elastic."
+  }
+}

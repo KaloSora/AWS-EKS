@@ -23,13 +23,3 @@ module "ec2_nat_instance" {
   # Ensure the IGW, public route and subnet associations exist before boot.
   depends_on = [module.vpc]
 }
-
-output "nat_instance_id" {
-  description = "NAT instance ID for SSM diagnostics"
-  value       = var.nat_instance_enable ? module.ec2_nat_instance[0].instance_id : null
-}
-
-output "nat_public_ip" {
-  description = "Public egress IP shared by private nodes"
-  value       = var.nat_instance_enable ? module.ec2_nat_instance[0].public_ip : null
-}

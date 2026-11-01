@@ -1,0 +1,5 @@
+apiVersion: v2
+name: storage-classes
+description: StorageClasses for the existing standard EKS EBS and EFS CSI add-ons
+type: application
+version: 0.1.0

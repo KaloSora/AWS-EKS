@@ -56,3 +56,9 @@ csi_addon_versions = {
   ebs = "v1.67.2-eksbuild.1"
   efs = "v3.5.3-eksbuild.1"
 }
+
+eks_kubeconfig_file = "eks_kube_config/config"
+
+# Regional EFS is retained across targeted EKS teardown/recreation.
+eks_efs_file_system_name = "dev-eks-efs"
+eks_efs_throughput_mode  = "bursting"
