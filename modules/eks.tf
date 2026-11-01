@@ -14,6 +14,8 @@ module "eks" {
   require_free_tier_eligible = var.eks_require_free_tier_eligible
   capacity_type              = "ON_DEMAND"
   node_scaling               = var.eks_node_scaling
+  eks_csi_enabled            = var.eks_csi_enabled
+  csi_addon_versions         = var.csi_addon_versions
   tags = {
     Environment = var.aws_env
     ManagedBy   = "Terraform"

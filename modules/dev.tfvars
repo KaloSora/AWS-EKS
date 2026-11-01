@@ -19,7 +19,7 @@ availability_zones = [
 ]
 
 # EKS variable
-eks_kubernetes_version         = "1.35"
+eks_kubernetes_version         = "1.36"
 eks_admin_principal_arn        = "arn:aws:iam::823058656952:role/AWS-InfraDevOps"
 eks_public_access_cidrs        = ["103.151.172.76/32"]
 eks_node_instance_types        = ["t3.small"]
@@ -49,3 +49,9 @@ vpc_endpoint_interface_services = [
 # Single shared AL2023 NAT instance in the first configured public subnet.
 nat_instance_type = "t4g.micro"
 # nat_instance_ami_id = "ami-0f3e7b8c1e5d2a1b2" # By default will get the latest AL2023 AMI for the region.
+
+eks_csi_enabled = true
+csi_addon_versions = {
+  ebs = "v1.67.2-eksbuild.1"
+  efs = "v3.5.3-eksbuild.1"
+}

@@ -105,3 +105,20 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "eks_csi_enabled" {
+  description = "Enable EKS CSI driver for EBS & EFS volumes"
+  type        = bool
+  default     = false
+  nullable    = false
+}
+
+variable "csi_addon_versions" {
+  description = "Optional pinned compatible EBS/EFS add-on versions; null selects the EKS default on creation"
+  type = object({
+    ebs = optional(string)
+    efs = optional(string)
+  })
+  default  = {}
+  nullable = false
+}

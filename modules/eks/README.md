@@ -97,8 +97,24 @@ Tests replace authentication and AWS/Terraform commands in temporary directories
 `max_size` defines the capacity limit; it does not automatically scale nodes based on Pod demand. Install Cluster Autoscaler separately if needed.
 Terraform manages `desired_size`. The next apply will revert changes made by manual scaling.
 To keep the example simple, VPC CNI permissions are attached to the node IAM role. For production, consider a dedicated IRSA or Pod Identity role.
-This module does not install the EBS CSI Driver, AWS Load Balancer Controller, or an Ingress controller. Configure persistent volumes and Ingress separately as needed.
+This module optionally installs the EBS and EFS CSI drivers as managed EKS add-ons when `eks_csi_enabled = true`. It does not install an AWS Load Balancer Controller or an Ingress controller. Configure persistent volumes and Ingress separately as needed.
 
 The EKS control plane, EC2 instances, disks, and networking resources such as NAT Gateways incur charges. Before cleanup, delete load balancers and storage created by workloads, then destroy the corresponding resources through the calling Terraform configuration. Running `terraform destroy` in the root module also deletes the VPC and budget resources managed by that root module.
 
 References: [AWS Provider EKS cluster](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_cluster), [Managed node group](https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/eks_node_group).
+
+## Optional EBS and EFS CSI Drivers
+
+`eks_csi_enabled` defaults to `false` in both the root and standalone module. The current `dev.tfvars` explicitly sets it to `true`. The switch controls both CSI add-ons, their dedicated IRSA roles/policy attachments, and the module-owned IAM OIDC provider. S3 CSI is not included. Pass root inputs into the child module; root tfvars do not configure child variables directly.
+
+```hcl
+# modules/dev.tfvars
+eks_csi_enabled = true
+# Optional: set csi_addon_versions = { ebs = "<compatible-version>", efs = "<compatible-version>" }
+```
+
+Without version overrides, EKS chooses compatible default add-on versions on creation; Terraform does not pin them. Query compatible versions for the cluster Kubernetes version and region before setting explicit versions. Before enabling, check for an existing IAM OIDC provider or self-managed CSI installation; reconcile existing ownership deliberately instead of creating duplicates or automatically importing resources.
+
+EBS permissions use `AmazonEBSCSIDriverPolicyV2`; EFS permissions use `service-role/AmazonEFSCSIDriverPolicy`. Each IRSA trust is limited to its `kube-system` controller service account and the STS audience. Nodes/controllers need connectivity to STS, EC2, EFS APIs and image registries via NAT or suitable endpoints. EFS also requires a separately managed file system, mount targets in node AZs, and NFS TCP 2049 rules between node and mount-target security groups. API endpoints do not replace NFS mount targets. No EFS file system, mount targets, StorageClasses, PVCs, or workload volumes are created by this switch.
+
+Changing the switch back to `false` plans deletion of the managed CSI add-ons, their roles/attachments and OIDC provider. Review workload and shared OIDC dependencies first: provisioning and mounting can fail when drivers or identity resources are removed. This is not a workload volume cleanup or backup mechanism. Inspect the actual plan before applying; do not automatically migrate state if the OIDC provider was previously tracked without an index.
