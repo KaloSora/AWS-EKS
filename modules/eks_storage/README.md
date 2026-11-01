@@ -38,8 +38,8 @@ with `eks_efs_file_system_name` in `modules/dev.tfvars`; no manual EFS ID input
 is required at the root. The root uses `reclaim_policy = "Delete"` for POC,
 while the standalone module default remains `Retain`.
 
-After the EKS create script has generated the kubeconfig, review a separate
-storage plan from `modules/`:
+The create script generates the kubeconfig after the EKS apply, then runs the
+storage apply as a separate stage. To review storage separately from `modules/`:
 
 ```bash
 terraform plan -var-file=dev.tfvars -target=module.eks_storage
@@ -47,8 +47,8 @@ terraform plan -var-file=dev.tfvars -target=module.eks_storage
 
 The target includes EFS, mount targets, cluster-specific NFS ingress and EKS/VPC
 dependencies. It can plan changes outside the Helm release and is not a complete
-review of all root resources. The create script currently targets only EKS and
-does not deploy this module or EFS. See [EFS](../eks_efs/README.md) for lifecycle,
+review of all root resources. The script retains Terraform confirmation for
+both applies by default. See [EFS](../eks_efs/README.md) for lifecycle,
 networking and retained-data costs.
 Do not include initial Helm installation in the first EKS apply: its kubeconfig
 is generated only after that apply completes.
@@ -65,9 +65,18 @@ cleanup behavior and must be reviewed before provisioning claims.
 Provisioner, parameters and binding mode cannot generally be changed in place.
 For incompatible changes, create a differently named class and plan workload/data
 migration. Helm uninstall removes the classes but is not a data cleanup procedure.
-Remove this release while the EKS API and authorization still work, before using
-the existing infrastructure destroy script. Its EKS targets can include this
-release as a dependent; review actual plans before teardown.
+The infrastructure destroy script first cleans up PVs/PVCs using `ebs-sc` and
+`efs-sc` in all namespaces, then removes the tracked Helm release, then destroys
+EFS and all its data before removing nodes and the control plane. Stop workload
+controllers and Pods first. Cleanup refuses in-use volumes, non-Delete PVs,
+wrong CSI drivers/Helm owners and EFS IDs that do not match Terraform state. It
+uses normal bounded deletion, rechecks for recreated volumes and never strips
+finalizers or automatically changes reclaim policies. Other classes are excluded.
+The script requires cluster-wide read permissions and deletion permissions for
+selected PVs/PVCs; API failures/timeouts stop teardown. For custom class names,
+review `script/cleanup_eks_storage.py`, which matches the root defaults. EFS
+module deletion is independent of the PVC reclaim policy and permanently deletes
+all file system data. Review actual plans before teardown.
 Actual provisioning, access permissions, expansion and retain behavior require
 live disposable PVC/Pod checks after an approved deployment; no such checks have
 been performed.

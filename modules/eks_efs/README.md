@@ -30,8 +30,9 @@ the cluster-specific NFS ingress rule and EKS CSI add-ons. Root output
 
 ## Deployment and teardown
 
-Use the existing EKS create process first so the local kubeconfig exists. Then
-review a storage plan from `modules/`:
+The create script applies EKS, generates the local kubeconfig, then applies the
+storage target with its EFS dependencies. For a separate read-only review from
+`modules/`, use:
 
 ```bash
 terraform plan -var-file=dev.tfvars -target=module.eks_storage
@@ -39,29 +40,34 @@ terraform plan -var-file=dev.tfvars -target=module.eks_storage
 
 This deliberate scoped operation includes the new EFS, mount targets, NFS rule
 and existing EKS/VPC dependencies; it can propose changes outside storage. Review
-the actual plan before an approved apply. The existing create script targets EKS
-only and does not automatically deploy EFS or the Helm release. The target is
-not a substitute for reviewing the complete configuration.
+the actual plan before an approved apply. The create script preserves Terraform
+confirmation for both applies by default. The target is not a substitute for
+reviewing the complete configuration.
 
-Before removing a cluster, stop workloads, remove disposable PVCs and wait for
-CSI cleanup while the nodes, controllers, permissions and network still work.
-Remove the Helm release while the Kubernetes API remains available. Existing
-targeted EKS destroy operations include dependents such as the Helm release and
-cluster-specific NFS rule; inspect their actual plans. They retain this EFS
-module, its mount targets and its security group, so a later cluster can reuse
-the same file system. They do not automatically remove PVC data.
+The destroy script now treats POC data as disposable. It first cleans up PVs
+and PVCs using `ebs-sc`/`efs-sc` while CSI controllers are running, then uninstalls
+the Helm release, then destroys `module.eks_efs` before deleting nodes/control
+plane and NAT. **This permanently deletes the entire EFS file system and all
+its data**, including directories left by previously deleted Access Points.
+Stop workload controllers and Pods before running the script. A volume still in
+use, non-Delete PV, API error or deletion timeout stops cleanup. No finalizers
+are stripped and no reclaim policy is automatically changed. Residual Access
+Points or replication dependencies can block the EFS destroy; failure stops
+node/control-plane teardown and requires diagnosis, without forced recovery.
 
-A full root destroy includes the file system and is permanently destructive to
-its data. `reclaimPolicy` does not protect a file system deleted by Terraform.
-Encryption changes can require replacement. Back up required data before any
-reviewed deletion/replacement. No destroy or data migration is automated here.
+The module itself has no cluster dependency. A manual targeted destroy of EKS
+alone can therefore retain EFS, but the updated destroy script explicitly
+includes EFS. A full root destroy also includes it. `reclaimPolicy` does not
+protect a file system deleted by Terraform. Encryption changes can require
+replacement. Back up required data separately before approved deletion or
+replacement; this workflow creates no backup and does not migrate data.
 
 ## Costs and validation limits
 
 Bursting is the root and standalone default: throughput depends on Standard
 storage size and burst credits, so tiny POC file systems can be throttled under
 sustained I/O. Elastic is configurable and charges for metered reads/writes.
-Storage charges continue for retained data after EKS deletion. No IA/Archive
+Storage charges continue if EFS is retained through a separate manual teardown. No IA/Archive
 lifecycle is enabled by this module. Backups, replication, transfers and other
 account settings can add charges; inspect actual account configuration.
 

@@ -12,7 +12,8 @@ set -Eeuo pipefail
 # Runbook:
 #   1. Initialize/validate Terraform and check AWS node group state
 #   2. Report nat_instance_enable and create module.eks dependencies
-#   3. Save a local kubeconfig and print kubectl examples
+#   3. Save a local kubeconfig
+#   4. Create module.eks_storage and its EFS dependencies; print access examples
 # ============================================================
 
 # ------------------------------------------------------------
@@ -25,7 +26,7 @@ TF_DIR="${PROJECT_ROOT}/modules"
 KUBECONFIG_FILE="${TF_DIR}/eks_kube_config/config"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
-TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"
+TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-false}"
 
 # ------------------------------------------------------------
 # Functions
@@ -67,17 +68,6 @@ validate_boolean() {
         *) error "${name} must be true or false, got: ${value}" ;;
     esac
 }
-
-configure_kubeconfig() (
-    umask 077
-    mkdir -p -- "$(dirname -- "$KUBECONFIG_FILE")" || return $?
-    aws eks update-kubeconfig \
-        --region "$EKS_REGION" \
-        --name "$EKS_CLUSTER_NAME" \
-        --alias "$EKS_CLUSTER_NAME" \
-        --kubeconfig "$KUBECONFIG_FILE" || return $?
-    chmod 600 "$KUBECONFIG_FILE" || return $?
-)
 
 pre_check() {
     local command_name
@@ -145,12 +135,27 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "1/2 - Create EKS and Required Dependencies" "$@"; then
+if ! run_step "1/3 - Create EKS and Required Dependencies" "$@"; then
     error "EKS apply failed. Preserve state/recovery files and inspect AWS node groups before retrying or destroying IAM roles."
 fi
 
-if ! run_step "2/2 - Configure Local kubeconfig" configure_kubeconfig; then
+if ! run_step "2/3 - Configure Local kubeconfig" configure_kubeconfig; then
     error "EKS apply completed, but local kubeconfig setup failed. Check the local path and AWS permissions; infrastructure has not been rolled back."
+fi
+
+log "Storage Configuration"
+echo "The storage target includes EFS, mount targets, NFS ingress and EKS/VPC dependencies."
+echo "Review the plan: targeting is not a complete review of all root resources."
+assert_nodegroups_tracked
+set -- terraform -chdir="$TF_DIR" apply \
+    -target=module.eks_storage \
+    -var-file="$TF_VAR_FILE"
+if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
+    set -- "$@" -auto-approve
+fi
+
+if ! run_step "3/3 - Create StorageClasses and EFS Dependencies" "$@"; then
+    error "Storage apply failed. EKS and any partially created EFS/Helm resources have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
 # ------------------------------------------------------------
@@ -164,9 +169,10 @@ log "Terraform Outputs"
 terraform -chdir="$TF_DIR" output
 
 log "CREATE COMPLETED"
-echo "EKS and its Terraform dependencies have been deployed."
+echo "EKS, EFS dependencies and Helm-managed StorageClasses have been deployed."
 echo "Local kubeconfig   : ${KUBECONFIG_FILE} (permissions: 600)"
 echo "kubectl examples (requires a valid authorized AWS session):"
 printf '  kubectl --kubeconfig %q --context %q get nodes\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"
 printf '  kubectl --kubeconfig %q --context %q get pods -n kube-system\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"
+printf '  kubectl --kubeconfig %q --context %q get storageclass\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"
 printf '  export KUBECONFIG=%q\n' "$KUBECONFIG_FILE"

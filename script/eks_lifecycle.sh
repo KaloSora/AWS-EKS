@@ -1,5 +1,47 @@
 #!/bin/bash
-# Shared, read-only checks. The caller initializes Terraform and AWS authentication.
+# Shared lifecycle checks and local kubeconfig setup.
+# The caller initializes Terraform and AWS authentication.
+
+configure_kubeconfig() (
+    umask 077
+    mkdir -p -- "$(dirname -- "$KUBECONFIG_FILE")" || return $?
+    aws eks update-kubeconfig \
+        --region "$EKS_REGION" \
+        --name "$EKS_CLUSTER_NAME" \
+        --alias "$EKS_CLUSTER_NAME" \
+        --kubeconfig "$KUBECONFIG_FILE" || return $?
+    chmod 600 "$KUBECONFIG_FILE" || return $?
+)
+
+load_storage_state() {
+    local state
+    state="$(terraform -chdir="$TF_DIR" show -json)" || return $?
+    STORAGE_RELEASE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        [.. | objects | select(.type? == "helm_release") |
+          select((.address? // "") | startswith("module.eks_storage."))] |
+        if length > 0 then "true" else "false" end')" || return $?
+    EFS_FILE_SYSTEM_ID="$(printf '%s\n' "$state" | jq -r '
+        [.. | objects | select(.type? == "aws_efs_file_system") |
+          select((.address? // "") | startswith("module.eks_efs.")) |
+          .values.id] | if length == 0 then "" elif length == 1 then .[0]
+          else error("Multiple EFS file systems in module.eks_efs; review cleanup scope") end')" || return $?
+}
+
+check_cluster_presence() {
+    local error_file
+    error_file="$(mktemp)" || return $?
+    if aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --region "$EKS_REGION" \
+        --query cluster.name --output text --no-cli-pager >/dev/null 2> "$error_file"; then
+        EKS_CLUSTER_PRESENT=true
+    elif grep -q '(ResourceNotFoundException)' "$error_file"; then
+        EKS_CLUSTER_PRESENT=false
+    else
+        cat "$error_file" >&2
+        rm -f "$error_file"
+        return 1
+    fi
+    rm -f "$error_file"
+}
 
 load_eks_context() {
     local context
