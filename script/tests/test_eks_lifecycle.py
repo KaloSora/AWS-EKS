@@ -50,6 +50,9 @@ elif kind == 'aws':
         print(json.dumps({'nodegroups':groups}))
     elif args[:3] == ['eks','wait','nodegroup-deleted']:
         if mode == 'wait_failure': sys.exit(255)
+    elif args[:2] == ['eks','update-kubeconfig']:
+        if mode == 'kubeconfig_failure': sys.exit(2)
+        Path(args[args.index('--kubeconfig') + 1]).write_text('# mock kubeconfig\n')
     else:
         raise AssertionError(args)
 '''
@@ -85,9 +88,14 @@ class LifecycleTests(unittest.TestCase):
                 'TEST_NAT_ENABLED':json.dumps(nat_enabled),
                 'TEST_DELETED':str(root/'deleted'), 'TMPDIR':str(root),
             }
+            if auto_approve is None:
+                env.pop('TF_AUTO_APPROVE')
             result = subprocess.run(['/bin/bash',str(scripts/script)],cwd='/tmp',
                                     env=env,input=confirm if confirm is not None else "",capture_output=True,text=True)
             calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
+            kubeconfig = scripts.parent/'modules'/'eks_kube_config'/'config'
+            result.kubeconfig_path = str(kubeconfig)
+            result.kubeconfig_mode = kubeconfig.stat().st_mode & 0o777 if kubeconfig.exists() else None
             return result, calls
 
     def destroys(self, calls):
@@ -147,11 +155,43 @@ class LifecycleTests(unittest.TestCase):
         self.assertIn('Preserve state/recovery files',result.stdout+result.stderr)
         self.assertEqual(self.destroys(calls),[])
         self.assertNotIn('[PASS] STEP 2',result.stdout)
+        self.assertFalse(any(c[:3] == ['aws', 'eks', 'update-kubeconfig'] for c in calls))
 
     def test_create_success(self):
         result,calls = self.run_script('run_infra_create.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(any('apply' in c for c in calls if c[0]=='terraform'))
+
+    def test_kubeconfig_is_created_after_apply_with_private_permissions(self):
+        result, calls = self.run_script('run_infra_create.sh')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        update = next(c for c in calls if c[:3] == ['aws', 'eks', 'update-kubeconfig'])
+        self.assertEqual(update[3:], [
+            '--region', 'ap-southeast-1', '--name', 'dev-eks',
+            '--alias', 'dev-eks', '--kubeconfig', result.kubeconfig_path,
+        ])
+        apply = next(i for i, c in enumerate(calls) if c[0] == 'terraform' and 'apply' in c)
+        self.assertGreater(calls.index(update), apply)
+        self.assertEqual(result.kubeconfig_mode, 0o600)
+        # Evaluate each printed example with a mock kubectl to verify shell quoting
+        # for the fixture's path containing spaces, without contacting a cluster.
+        for line in result.stdout.splitlines():
+            if line.startswith('  kubectl '):
+                command = 'kubectl() { printf "%s\\n" "$@"; }; ' + line.strip()
+                parsed = subprocess.run(['/bin/bash', '-c', command], capture_output=True, text=True, check=True)
+                self.assertEqual(parsed.stdout.splitlines()[:4], [
+                    '--kubeconfig', result.kubeconfig_path, '--context', 'dev-eks',
+                ])
+        self.assertIn('get nodes', result.stdout)
+        self.assertIn('get pods -n kube-system', result.stdout)
+
+    def test_kubeconfig_failure_does_not_report_completion_or_rollback(self):
+        result, calls = self.run_script('run_infra_create.sh', 'kubeconfig_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('infrastructure has not been rolled back', result.stderr)
+        self.assertNotIn('CREATE COMPLETED', result.stdout)
+        self.assertNotIn('[PASS] STEP 2', result.stdout)
+        self.assertEqual(self.destroys(calls), [])
 
 
     def test_destroy_requires_confirmation_by_default(self):
@@ -171,7 +211,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(len(self.destroys(calls)),3)
 
     def test_create_preserves_terraform_confirmation_by_default(self):
-        result,calls = self.run_script('run_infra_create.sh', auto_approve='false')
+        result,calls = self.run_script('run_infra_create.sh', auto_approve=None)
         self.assertEqual(result.returncode,0,result.stderr)
         apply = next(c for c in calls if c[0]=='terraform' and 'apply' in c)
         self.assertNotIn('-auto-approve',apply)

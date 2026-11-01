@@ -12,6 +12,7 @@ set -Eeuo pipefail
 # Runbook:
 #   1. Initialize/validate Terraform and check AWS node group state
 #   2. Report nat_instance_enable and create module.eks dependencies
+#   3. Save a local kubeconfig and print kubectl examples
 # ============================================================
 
 # ------------------------------------------------------------
@@ -21,6 +22,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 TF_DIR="${PROJECT_ROOT}/modules"
+KUBECONFIG_FILE="${TF_DIR}/eks_kube_config/config"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
 TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"
@@ -65,6 +67,17 @@ validate_boolean() {
         *) error "${name} must be true or false, got: ${value}" ;;
     esac
 }
+
+configure_kubeconfig() (
+    umask 077
+    mkdir -p -- "$(dirname -- "$KUBECONFIG_FILE")" || return $?
+    aws eks update-kubeconfig \
+        --region "$EKS_REGION" \
+        --name "$EKS_CLUSTER_NAME" \
+        --alias "$EKS_CLUSTER_NAME" \
+        --kubeconfig "$KUBECONFIG_FILE" || return $?
+    chmod 600 "$KUBECONFIG_FILE" || return $?
+)
 
 pre_check() {
     local command_name
@@ -132,8 +145,12 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "1/1 - Create EKS and Required Dependencies" "$@"; then
+if ! run_step "1/2 - Create EKS and Required Dependencies" "$@"; then
     error "EKS apply failed. Preserve state/recovery files and inspect AWS node groups before retrying or destroying IAM roles."
+fi
+
+if ! run_step "2/2 - Configure Local kubeconfig" configure_kubeconfig; then
+    error "EKS apply completed, but local kubeconfig setup failed. Check the local path and AWS permissions; infrastructure has not been rolled back."
 fi
 
 # ------------------------------------------------------------
@@ -148,7 +165,8 @@ terraform -chdir="$TF_DIR" output
 
 log "CREATE COMPLETED"
 echo "EKS and its Terraform dependencies have been deployed."
-echo "Next step: configure kubectl using your authorized cluster administrator identity."
-printf '  aws eks update-kubeconfig --region %s --name %s\n' "$EKS_REGION" "$EKS_CLUSTER_NAME"
-echo "  kubectl get nodes"
-echo "  kubectl get pods -n kube-system"
+echo "Local kubeconfig   : ${KUBECONFIG_FILE} (permissions: 600)"
+echo "kubectl examples (requires a valid authorized AWS session):"
+printf '  kubectl --kubeconfig %q --context %q get nodes\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"
+printf '  kubectl --kubeconfig %q --context %q get pods -n kube-system\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"
+printf '  export KUBECONFIG=%q\n' "$KUBECONFIG_FILE"
