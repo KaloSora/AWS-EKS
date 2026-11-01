@@ -23,7 +23,7 @@ PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 TF_DIR="${PROJECT_ROOT}/modules"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
-TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-false}"
+TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"
 
 # ------------------------------------------------------------
 # Functions
