@@ -14,4 +14,4 @@
 | 9 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
 
 ## Reference
-![Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)
+[Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)
