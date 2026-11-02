@@ -130,3 +130,70 @@ wait_for_nodegroups_deleted() {
         return 1
     fi
 }
+
+# Detect all tracked ingress-module resources, including partial IAM-only applies.
+load_ingress_state() {
+    local state
+    state="$(terraform -chdir="$TF_DIR" show -json)" || return $?
+    INGRESS_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        [.. | objects | select(.mode? == "managed") |
+          select((.address? // "") | startswith("module.eks_ingress."))] |
+        if length > 0 then "true" else "false" end')" || return $?
+}
+
+# Read-only gate: application cleanup must complete while the Controller works.
+# No workload deletion, AWS resource deletion, retry or finalizer stripping here.
+assert_ingress_cleanup_complete() {
+    local resources remaining api_resources aws_resources
+    if [[ "$EKS_CLUSTER_PRESENT" == "true" ]]; then
+        resources="$(kubectl --kubeconfig "$KUBECONFIG_FILE" --context "$EKS_CLUSTER_NAME" \
+            --request-timeout=30s get ingresses.networking.k8s.io,services --all-namespaces -o json)" || return $?
+        remaining="$(printf '%s\n' "$resources" | jq -ce '
+            .items | if type != "array" then error("Invalid Kubernetes list") else
+              [.[] | select(.kind == "Ingress" or
+                (.kind == "Service" and .spec.type == "LoadBalancer")) |
+                {kind, namespace: .metadata.namespace, name: .metadata.name}] end')" || return $?
+        if [[ "$remaining" != '[]' ]]; then
+            echo "[ERROR] Remove application Ingresses and LoadBalancer Services before teardown: $remaining" >&2
+            return 1
+        fi
+
+        # Discover the CRD rather than treating arbitrary API errors as absence.
+        api_resources="$(kubectl --kubeconfig "$KUBECONFIG_FILE" --context "$EKS_CLUSTER_NAME" \
+            --request-timeout=30s api-resources --api-group=elbv2.k8s.aws --cached=false -o name)" || return $?
+        if [[ "$api_resources" == *"targetgroupbindings.elbv2.k8s.aws"* ]]; then
+            resources="$(kubectl --kubeconfig "$KUBECONFIG_FILE" --context "$EKS_CLUSTER_NAME" \
+                --request-timeout=30s get targetgroupbindings.elbv2.k8s.aws --all-namespaces -o json)" || return $?
+            remaining="$(printf '%s\n' "$resources" | jq -ce '
+                .items | if type != "array" then error("Invalid TargetGroupBinding list") else
+                  [.[] | {namespace: .metadata.namespace, name: .metadata.name}] end')" || return $?
+            if [[ "$remaining" != '[]' ]]; then
+                echo "[ERROR] TargetGroupBindings still exist; keep the Controller running until cleanup completes: $remaining" >&2
+                return 1
+            fi
+        fi
+    fi
+
+    # AWS CLI auto-pagination is retained. This gate covers cluster-tagged LBs
+    # and target groups, including those orphaned outside Terraform state.
+    aws_resources="$(aws resourcegroupstaggingapi get-resources \
+        --region "$EKS_REGION" \
+        --tag-filters "Key=elbv2.k8s.aws/cluster,Values=${EKS_CLUSTER_NAME}" \
+        --resource-type-filters elasticloadbalancing:loadbalancer elasticloadbalancing:targetgroup \
+        --query 'ResourceTagMappingList[].ResourceARN' --output json --no-cli-pager)" || return $?
+    remaining="$(printf '%s\n' "$aws_resources" | jq -ce '
+        if type == "array" and all(.[]; type == "string") then .
+        else error("Invalid AWS load balancer inventory") end')" || return $?
+    if [[ "$remaining" != '[]' ]]; then
+        echo "[ERROR] Cluster-tagged AWS load balancers/target groups remain: $remaining" >&2
+        echo "Keep the Controller, nodes and IAM permissions available; complete cleanup before rerunning teardown." >&2
+        return 1
+    fi
+    if [[ "$EKS_CLUSTER_PRESENT" == "true" ]]; then
+        echo "[PASS] Kubernetes ingress inventory is empty."
+    else
+        echo "Kubernetes ingress inventory unavailable: cluster is absent."
+    fi
+    echo "[PASS] No cluster-tagged AWS load balancers or target groups found."
+    echo "Review untagged resources and residual security groups separately; stop controllers that could recreate ingress resources."
+}

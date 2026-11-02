@@ -33,8 +33,9 @@ to create that role themselves.
 
 The root calls this module from `modules/eks_ingress.tf`. Configure
 `eks_ingress_chart_version` and `eks_ingress_replica_count` in `modules/dev.tfvars`;
-the root passes them into this child module. The existing create script targets
-EKS and storage and will not install this Controller automatically.
+the root passes them into this child module. The create script applies EKS,
+generates kubeconfig, applies storage, then applies this Controller as a separate
+stage with Terraform confirmation preserved unless `TF_AUTO_APPROVE=true`.
 
 ```hcl
 module "eks_ingress" {
@@ -136,9 +137,25 @@ its OIDC provider, nodes and NAT. Do not remove finalizers or state to bypass
 cleanup failures. Helm uninstall alone does not delete application Ingresses or
 prove their AWS resources are gone; chart CRDs can remain.
 
-The current infrastructure destroy script does not include this module or verify
-ALB cleanup. Do not run it against a cluster using this Controller until the
-above cleanup and module removal have been completed and reviewed.
+The destroy script requires typing `destroy` once, then runs a read-only cleanup
+gate before any deletion. It refuses remaining application Ingresses (all classes),
+LoadBalancer Services and TargetGroupBindings. It discovers the TargetGroupBinding
+API before querying it; discovery/list/authentication errors stop teardown. AWS
+Resource Groups Tagging API auto-pagination checks load balancers and target
+groups tagged `elbv2.k8s.aws/cluster=<cluster-name>` in the configured region,
+even when the Controller module is absent from Terraform state. Residual resources,
+malformed inventories or API errors stop teardown without uninstalling the Controller.
+The script requires `tag:GetResources` plus cluster-wide list access to Ingresses,
+Services and TargetGroupBindings and API discovery permissions. It does not delete
+application resources, strip finalizers, retry cleanup or modify Terraform state.
+
+After the gate passes, tracked `module.eks_ingress` resources (including partial
+IAM-only applies) are destroyed before storage cleanup, nodes, EKS/OIDC and NAT.
+Uninstall failures stop later teardown. An absent cluster with tracked ingress or
+storage resources requires explicit recovery; the script stops. Untagged AWS
+resources and residual security groups are outside the automatic inventory and
+must be reviewed separately. Stop workload/GitOps controllers that can recreate
+entry resources before teardown; the gate cannot prevent concurrent changes.
 
 The Controller consumes existing node capacity. ALBs incur separate hourly/LCU,
 public IPv4 and applicable traffic charges after provisioning. Budget alerts do

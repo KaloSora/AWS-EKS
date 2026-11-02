@@ -34,11 +34,20 @@ if kind == 'terraform':
         if mode == 'storage_state_failure':
             shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
             if sum(c[0] == 'terraform' and 'show' in c for c in shows) > 1: sys.exit(2)
+        if mode == 'ingress_state_failure':
+            shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
+            if sum(c[0] == 'terraform' and 'show' in c for c in shows) >= 3: sys.exit(2)
         groups = [] if mode == 'orphan' else [{'type':'aws_eks_node_group','values':{'cluster_name':'dev-eks','node_group_name':'dev-eks-general'}}]
-        if mode not in ['storage_untracked', 'absent_cluster']:
+        if mode not in ['storage_untracked', 'absent_cluster', 'absent_cluster_with_ingress', 'absent_cluster_with_aws_lb']:
             groups.append({'type':'helm_release', 'address':'module.eks_storage.helm_release.storage_classes'})
+        if mode not in ['ingress_untracked', 'absent_cluster', 'absent_cluster_with_aws_lb']:
+            groups.append({'mode':'managed', 'type':'aws_iam_role', 'address':'module.eks_ingress.aws_iam_role.controller'})
+            if mode != 'ingress_iam_only':
+                groups.append({'mode':'managed', 'type':'helm_release', 'address':'module.eks_ingress.helm_release.aws_load_balancer_controller'})
         groups.append({'type':'aws_efs_file_system', 'address':'module.eks_efs.aws_efs_file_system.this', 'values':{'id':'fs-0123456789abcdef0'}})
         print(json.dumps({'values':{'root_module':{'child_modules':[{'resources':groups}]}}}))
+    elif 'destroy' in args and '-target=module.eks_ingress' in args:
+        if mode == 'ingress_destroy_failure': sys.exit(2)
     elif 'destroy' in args and '-target=module.eks_efs' in args:
         if mode == 'efs_destroy_failure': sys.exit(2)
     elif 'destroy' in args and '-target=module.eks_storage' in args:
@@ -46,20 +55,51 @@ if kind == 'terraform':
     elif 'destroy' in args and '-target=module.eks.aws_eks_node_group.this' in args:
         if mode == 'terraform_failure': sys.exit(2)
         marker.touch()
+    elif 'apply' in args and mode == 'ingress_apply_failure' and '-target=module.eks_ingress' in args:
+        sys.exit(2)
     elif 'apply' in args and mode == 'storage_apply_failure' and '-target=module.eks_storage' in args:
         sys.exit(2)
     elif 'apply' in args and mode == 'apply_failure':
         sys.exit(2)
 elif kind == 'kubectl':
-    if mode == 'cleanup_failure': sys.exit(2)
-    if 'get' in args:
-        print(json.dumps({'items':[]}))
+    if 'api-resources' in args:
+        if mode == 'ingress_discovery_failure': sys.exit(2)
+        if mode != 'ingress_crd_absent': print('targetgroupbindings.elbv2.k8s.aws')
+    elif 'get' in args:
+        resource = args[args.index('get') + 1]
+        if mode == 'cleanup_failure' and resource == 'storageclasses': sys.exit(2)
+        if resource == 'ingresses.networking.k8s.io,services':
+            if mode == 'ingress_query_failure': sys.exit(2)
+            if mode == 'ingress_invalid_json': print('{}'); sys.exit(0)
+            items = []
+            if mode == 'remaining_ingress':
+                items = [{'kind':'Ingress','metadata':{'namespace':'app','name':'web'}}]
+            if mode == 'remaining_lb_service':
+                items = [{'kind':'Service','metadata':{'namespace':'app','name':'web'},'spec':{'type':'LoadBalancer'}}]
+            if mode == 'ordinary_service':
+                items = [{'kind':'Service','metadata':{'namespace':'app','name':'web'},'spec':{'type':'ClusterIP'}}]
+            print(json.dumps({'items':items}))
+        elif resource == 'targetgroupbindings.elbv2.k8s.aws':
+            if mode == 'tgb_query_failure': sys.exit(2)
+            items = [{'metadata':{'namespace':'app','name':'web'}}] if mode == 'remaining_tgb' else []
+            print(json.dumps({'items':items}))
+        else:
+            print(json.dumps({'items':[]}))
     else:
         raise AssertionError(args)
 elif kind == 'aws':
-    if args[:2] == ['eks','describe-cluster']:
+    if args[:2] == ['resourcegroupstaggingapi','get-resources']:
+        assert 'Key=elbv2.k8s.aws/cluster,Values=dev-eks' in args
+        assert 'elasticloadbalancing:loadbalancer' in args
+        assert 'elasticloadbalancing:targetgroup' in args
+        assert '--no-paginate' not in args
+        if mode == 'ingress_aws_failure': sys.exit(254)
+        if mode == 'ingress_aws_invalid_json': print('{}'); sys.exit(0)
+        remaining = ['arn:aws:elasticloadbalancing:ap-southeast-1:123456789012:loadbalancer/app/web/fixture'] if mode in ['remaining_aws_lb', 'absent_cluster_with_aws_lb'] else []
+        print(json.dumps(remaining))
+    elif args[:2] == ['eks','describe-cluster']:
         if mode == 'cluster_lookup_failure': sys.exit(254)
-        if mode in ['absent_cluster', 'absent_cluster_with_storage']:
+        if mode.startswith('absent_cluster'):
             print('An error occurred (ResourceNotFoundException)', file=sys.stderr)
             sys.exit(254)
         print('dev-eks')
@@ -67,7 +107,7 @@ elif kind == 'aws':
         if mode == 'access_denied':
             print('An error occurred (AccessDeniedException)', file=sys.stderr)
             sys.exit(254)
-        if mode in ['absent_cluster', 'absent_cluster_with_storage']:
+        if mode.startswith('absent_cluster'):
             print('An error occurred (ResourceNotFoundException)', file=sys.stderr)
             sys.exit(254)
         groups = [] if marker.exists() and mode != 'lingering' else ['dev-eks-general']
@@ -131,13 +171,18 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_destroy.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(self.destroys(calls),[
-            '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this',
+            '-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this',
             '-target=module.eks','-target=module.ec2_nat_instance'])
         wait = next(i for i,c in enumerate(calls) if c[:4]==['aws','eks','wait','nodegroup-deleted'])
         cluster = next(i for i,c in enumerate(calls) if 'destroy' in c and '-target=module.eks' in c)
         self.assertLess(wait,cluster)
         update = next(i for i,c in enumerate(calls) if c[:3] == ['aws','eks','update-kubeconfig'])
         storage = next(i for i,c in enumerate(calls) if 'destroy' in c and '-target=module.eks_storage' in c)
+        ingress = next(i for i,c in enumerate(calls) if 'destroy' in c and '-target=module.eks_ingress' in c)
+        inventory = next(i for i,c in enumerate(calls) if c[:2] == ['aws','resourcegroupstaggingapi'])
+        self.assertLess(update, inventory)
+        self.assertLess(inventory, ingress)
+        self.assertLess(ingress, storage)
         self.assertLess(update,storage)
         self.assertLess(storage,wait)
         cleanup = [i for i,c in enumerate(calls) if c[0] == 'kubectl']
@@ -148,16 +193,17 @@ class LifecycleTests(unittest.TestCase):
         self.assertLess(storage, efs)
         self.assertLess(efs, nodes)
 
-    def test_volume_cleanup_failure_preserves_all_infrastructure(self):
+    def test_volume_cleanup_failure_preserves_storage_nodes_and_nat(self):
         result, calls = self.run_script('run_infra_destroy.sh', 'cleanup_failure')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.destroys(calls), [])
+        self.assertEqual(self.destroys(calls), ['-target=module.eks_ingress'])
+        self.assertIn('Storage cleanup stopped', result.stderr)
         self.assertNotIn('DESTROY COMPLETED', result.stdout)
 
     def test_efs_destroy_failure_preserves_nodes_cluster_and_nat(self):
         result, calls = self.run_script('run_infra_destroy.sh', 'efs_destroy_failure')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.destroys(calls), ['-target=module.eks_storage', '-target=module.eks_efs'])
+        self.assertEqual(self.destroys(calls), ['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs'])
         self.assertNotIn('DESTROY COMPLETED', result.stdout)
 
     def test_cluster_lookup_failure_preserves_all_resources(self):
@@ -174,18 +220,18 @@ class LifecycleTests(unittest.TestCase):
     def test_wait_failure_preserves_cluster_roles_and_nat(self):
         result,calls = self.run_script('run_infra_destroy.sh','wait_failure')
         self.assertNotEqual(result.returncode,0)
-        self.assertEqual(self.destroys(calls),['-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
+        self.assertEqual(self.destroys(calls),['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
 
     def test_lingering_groups_preserve_cluster_roles_and_nat(self):
         result,calls = self.run_script('run_infra_destroy.sh','lingering')
         self.assertNotEqual(result.returncode,0)
-        self.assertEqual(self.destroys(calls),['-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
+        self.assertEqual(self.destroys(calls),['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
 
     def test_nodegroup_destroy_failure_stops_script(self):
         result,calls = self.run_script('run_infra_destroy.sh','terraform_failure')
         self.assertNotEqual(result.returncode,0)
-        self.assertEqual(self.destroys(calls),['-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
-        self.assertNotIn('[PASS] STEP 4',result.stdout)
+        self.assertEqual(self.destroys(calls),['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
+        self.assertNotIn('[PASS] STEP 5',result.stdout)
 
     def test_access_denied_is_not_treated_as_missing_cluster(self):
         result,calls = self.run_script('run_infra_destroy.sh','access_denied')
@@ -216,10 +262,12 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(any('apply' in c for c in calls if c[0]=='terraform'))
         targets = [next(arg for arg in c if arg.startswith('-target='))
                    for c in calls if c[0] == 'terraform' and 'apply' in c]
-        self.assertEqual(targets, ['-target=module.eks', '-target=module.eks_storage'])
+        self.assertEqual(targets, ['-target=module.eks', '-target=module.eks_storage', '-target=module.eks_ingress'])
         update = next(i for i, c in enumerate(calls) if c[:3] == ['aws', 'eks', 'update-kubeconfig'])
         storage = next(i for i, c in enumerate(calls) if 'apply' in c and '-target=module.eks_storage' in c)
         self.assertLess(update, storage)
+        ingress = next(i for i,c in enumerate(calls) if 'apply' in c and '-target=module.eks_ingress' in c)
+        self.assertLess(storage, ingress)
 
     def test_storage_apply_failure_stops_without_rollback_or_completion(self):
         result, calls = self.run_script('run_infra_create.sh', 'storage_apply_failure')
@@ -232,7 +280,7 @@ class LifecycleTests(unittest.TestCase):
     def test_storage_destroy_failure_preserves_nodes_cluster_and_nat(self):
         result, calls = self.run_script('run_infra_destroy.sh', 'storage_destroy_failure')
         self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.destroys(calls), ['-target=module.eks_storage'])
+        self.assertEqual(self.destroys(calls), ['-target=module.eks_ingress', '-target=module.eks_storage'])
         self.assertNotIn('DESTROY COMPLETED', result.stdout)
         self.assertFalse(any(c[:4] == ['aws', 'eks', 'wait', 'nodegroup-deleted'] for c in calls))
 
@@ -249,7 +297,7 @@ class LifecycleTests(unittest.TestCase):
         result, calls = self.run_script('run_infra_destroy.sh', 'storage_untracked')
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(self.destroys(calls), [
-            '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this', '-target=module.eks',
+            '-target=module.eks_ingress', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this', '-target=module.eks',
             '-target=module.ec2_nat_instance',
         ])
         self.assertTrue(any(c[:3] == ['aws', 'eks', 'update-kubeconfig'] for c in calls))
@@ -315,20 +363,20 @@ class LifecycleTests(unittest.TestCase):
     def test_destroy_confirmation_accepts_exact_keyword(self):
         result,calls = self.run_script('run_infra_destroy.sh', auto_approve='false', confirm='destroy\n')
         self.assertEqual(result.returncode,0,result.stderr)
-        self.assertEqual(len(self.destroys(calls)),5)
+        self.assertEqual(len(self.destroys(calls)),6)
 
     def test_create_preserves_terraform_confirmation_by_default(self):
         result,calls = self.run_script('run_infra_create.sh', auto_approve=None)
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 2)
+        self.assertEqual(len(applies), 3)
         self.assertTrue(all('-auto-approve' not in c for c in applies))
 
     def test_create_auto_approve_option(self):
         result,calls = self.run_script('run_infra_create.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 2)
+        self.assertEqual(len(applies), 3)
         self.assertTrue(all('-auto-approve' in c for c in applies))
 
     def test_invalid_auto_approve_fails_before_cloud_calls(self):
@@ -336,6 +384,69 @@ class LifecycleTests(unittest.TestCase):
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(calls,[])
         self.assertIn('must be true or false',result.stderr)
+
+    def test_ingress_apply_failure_stops_without_rollback_or_completion(self):
+        result, calls = self.run_script('run_infra_create.sh', 'ingress_apply_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Ingress Controller apply failed', result.stderr)
+        self.assertNotIn('CREATE COMPLETED', result.stdout)
+        self.assertNotIn('[PASS] STEP 4', result.stdout)
+        self.assertEqual(self.destroys(calls), [])
+
+    def test_ingress_destroy_failure_preserves_storage_nodes_and_nat(self):
+        result, calls = self.run_script('run_infra_destroy.sh', 'ingress_destroy_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.destroys(calls), ['-target=module.eks_ingress'])
+        self.assertFalse(any(c[0] == 'kubectl' and 'pv' in c for c in calls))
+        self.assertNotIn('DESTROY COMPLETED', result.stdout)
+
+    def test_ingress_cleanup_errors_stop_before_any_teardown(self):
+        modes = ['remaining_ingress', 'remaining_lb_service', 'remaining_tgb',
+                 'remaining_aws_lb', 'ingress_query_failure', 'tgb_query_failure',
+                 'ingress_discovery_failure', 'ingress_aws_failure',
+                 'ingress_invalid_json', 'ingress_aws_invalid_json', 'ingress_state_failure']
+        for mode in modes:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertNotEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(self.destroys(calls), [])
+                self.assertFalse(any(c[0] == 'kubectl' and 'delete' in c for c in calls))
+                self.assertNotIn('DESTROY COMPLETED', result.stdout)
+
+    def test_ingress_iam_only_partial_apply_is_cleaned(self):
+        result, calls = self.run_script('run_infra_destroy.sh', 'ingress_iam_only')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.destroys(calls)[0], '-target=module.eks_ingress')
+
+    def test_untracked_ingress_module_is_skipped_after_inventory(self):
+        result, calls = self.run_script('run_infra_destroy.sh', 'ingress_untracked')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn('-target=module.eks_ingress', self.destroys(calls))
+        self.assertTrue(any(c[:2] == ['aws','resourcegroupstaggingapi'] for c in calls))
+
+    def test_absent_tgb_crd_and_ordinary_service_do_not_block_cleanup(self):
+        for mode in ['ingress_crd_absent', 'ordinary_service']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                if mode == 'ingress_crd_absent':
+                    self.assertFalse(any('targetgroupbindings.elbv2.k8s.aws' in c for c in calls))
+
+    def test_destroy_default_auto_approve_is_false_and_cancellation_is_preserved(self):
+        result, calls = self.run_script('run_infra_destroy.sh', auto_approve=None)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('Auto approve       : false', result.stdout)
+        self.assertIn('Destroy cancelled.', result.stdout)
+        self.assertEqual(self.destroys(calls), [])
+
+    def test_absent_cluster_with_ingress_or_aws_residue_stops_cleanup(self):
+        for mode in ['absent_cluster_with_ingress', 'absent_cluster_with_aws_lb']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.destroys(calls), [])
+                self.assertNotIn('DESTROY COMPLETED', result.stdout)
+                self.assertFalse(any(c[0] == 'kubectl' for c in calls))
 
     def test_nat_status_for_both_scripts_and_boolean_values(self):
         for script in ['run_infra_create.sh', 'run_infra_destroy.sh']:

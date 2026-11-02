@@ -65,7 +65,9 @@ cleanup behavior and must be reviewed before provisioning claims.
 Provisioner, parameters and binding mode cannot generally be changed in place.
 For incompatible changes, create a differently named class and plan workload/data
 migration. Helm uninstall removes the classes but is not a data cleanup procedure.
-The infrastructure destroy script first cleans up PVs/PVCs using `ebs-sc` and
+The infrastructure destroy script first verifies application ingress cleanup and
+removes the tracked ALB Controller while EKS is available. It then cleans up
+PVs/PVCs using `ebs-sc` and
 `efs-sc` in all namespaces, then removes the tracked Helm release, then destroys
 EFS and all its data before removing nodes and the control plane. Stop workload
 controllers and Pods first. Cleanup refuses in-use volumes, non-Delete PVs,

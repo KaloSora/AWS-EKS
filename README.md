@@ -11,3 +11,7 @@
 | 6 | `terraform apply -target=module.eks -var-file="dev.tfvars"` | Create EKS |
 | 7 | `terraform apply -target=module.eks_efs -var-file="dev.tfvars"` | Create AWS EFS |
 | 8 | `terraform apply -target=module.eks_storage -var-file="dev.tfvars"` | Create AWS Storage for EFS and EBS |
+| 9 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
+
+## Reference
+![Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)
