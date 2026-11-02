@@ -1,0 +1,33 @@
+# Terraform renders dynamic strings as JSON scalars, which are valid YAML.
+clusterName: ${jsonencode(cluster_name)}
+region: ${jsonencode(aws_region)}
+vpcId: ${jsonencode(vpc_id)}
+replicaCount: ${replica_count}
+
+# Use VPC-routable Pod IPs; do not claim unrelated LoadBalancer Services.
+defaultTargetType: ip
+enableServiceMutatorWebhook: false
+disableIngressClassAnnotation: true
+ingressClass: alb
+ingressClassConfig:
+  default: false
+ingressClassParams:
+  create: false
+controllerConfig:
+  featureGates:
+    ALBGatewayAPI: false
+    NLBGatewayAPI: false
+
+serviceAccount:
+  create: true
+  name: ${jsonencode(service_account_name)}
+  annotations:
+    eks.amazonaws.com/role-arn: ${jsonencode(controller_role_arn)}
+    eks.amazonaws.com/sts-regional-endpoints: "true"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    memory: 256Mi

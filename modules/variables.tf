@@ -179,3 +179,27 @@ variable "cicd_components" {
     config          = map(string)
   }))
 }
+
+variable "eks_ingress_chart_version" {
+  description = "AWS Load Balancer Controller chart version paired with the ingress module IAM policy"
+  type        = string
+  default     = "3.6.2"
+  nullable    = false
+
+  validation {
+    condition     = var.eks_ingress_chart_version == "3.6.2"
+    error_message = "The ingress module supports chart 3.6.2; upgrade its IAM policy and chart together."
+  }
+}
+
+variable "eks_ingress_replica_count" {
+  description = "AWS Load Balancer Controller replica count"
+  type        = number
+  default     = 2
+  nullable    = false
+
+  validation {
+    condition     = var.eks_ingress_replica_count >= 1 && var.eks_ingress_replica_count == floor(var.eks_ingress_replica_count)
+    error_message = "eks_ingress_replica_count must be a positive integer."
+  }
+}

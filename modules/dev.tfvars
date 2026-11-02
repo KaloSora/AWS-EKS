@@ -59,6 +59,11 @@ csi_addon_versions = {
 
 eks_kubeconfig_file = "eks_kubeconfig/config"
 
+# AWS Load Balancer Controller; deploy after EKS and local kubeconfig setup.
+# Reuses the cluster IAM OIDC provider configured with eks_csi_enabled=true.
+eks_ingress_chart_version = "3.6.2"
+eks_ingress_replica_count = 1 # Set it to 1 for Free Tier eligibility; >= 2 is recommended for HA.
+
 # Regional EFS is retained across targeted EKS teardown/recreation.
 eks_efs_file_system_name = "dev-eks-efs"
 eks_efs_throughput_mode  = "bursting"
