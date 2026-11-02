@@ -118,7 +118,7 @@ class LifecycleTests(unittest.TestCase):
             result = subprocess.run(['/bin/bash',str(scripts/script)],cwd='/tmp',
                                     env=env,input=confirm if confirm is not None else ("destroy\n" if auto_approve == "true" else ""),capture_output=True,text=True)
             calls = [json.loads(line) for line in trace.read_text().splitlines()] if trace.exists() else []
-            kubeconfig = scripts.parent/'modules'/'eks_kube_config'/'config'
+            kubeconfig = scripts.parent/'modules'/'eks_kubeconfig'/'config'
             result.kubeconfig_path = str(kubeconfig)
             result.kubeconfig_mode = kubeconfig.stat().st_mode & 0o777 if kubeconfig.exists() else None
             return result, calls

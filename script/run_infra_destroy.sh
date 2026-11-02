@@ -25,7 +25,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd -- "${SCRIPT_DIR}/.." && pwd)"
 TF_DIR="${PROJECT_ROOT}/modules"
-KUBECONFIG_FILE="${TF_DIR}/eks_kube_config/config"
+KUBECONFIG_FILE="${TF_DIR}/eks_kubeconfig/config"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
 TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"

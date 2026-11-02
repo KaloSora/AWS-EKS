@@ -57,7 +57,7 @@ csi_addon_versions = {
   efs = "v3.5.3-eksbuild.1"
 }
 
-eks_kubeconfig_file = "eks_kube_config/config"
+eks_kubeconfig_file = "eks_kubeconfig/config"
 
 # Regional EFS is retained across targeted EKS teardown/recreation.
 eks_efs_file_system_name = "dev-eks-efs"
