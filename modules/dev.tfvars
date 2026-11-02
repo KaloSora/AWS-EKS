@@ -6,6 +6,10 @@ budget_end    = "2027-04-10_23:59"
 budget_amount = 200
 budget_unit   = "USD"
 
+# Hosted Zone for AWS
+# Namecheap domain expires on Nov 2, 2027
+hosted_zone_name = "kalosora.live"
+
 ### AWS resources
 aws_account_id = "823058656952"
 aws_region     = "ap-southeast-1"

@@ -24,6 +24,11 @@ variable "budget_unit" {
   type        = string
 }
 
+variable "hosted_zone_name" {
+  type = string
+  description = "AWS Route53 hosted_zone name"
+}
+
 variable "aws_account_id" {
   type        = string
   description = "AWS account ID"
