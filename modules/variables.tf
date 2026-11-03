@@ -165,8 +165,8 @@ variable "eks_efs_throughput_mode" {
   }
 }
 
-variable "cicd_components" {
-  description = "CI/CD component inventory consumed by the generic Helm component module"
+variable "eks_components" {
+  description = "EKS platform component inventory consumed by the generic Helm component module"
   sensitive   = true
 
   type = map(object({

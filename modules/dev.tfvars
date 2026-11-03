@@ -72,7 +72,7 @@ eks_ingress_replica_count = 1 # Set it to 1 for Free Tier eligibility; >= 2 is r
 eks_efs_file_system_name = "dev-eks-efs"
 eks_efs_throughput_mode  = "bursting"
 
-cicd_components = {
+eks_components = {
   argocd = {
     enabled         = true
     release_name    = "argocd"

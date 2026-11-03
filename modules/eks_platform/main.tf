@@ -3,11 +3,7 @@ locals {
     for name, component in var.components : name
     if component.enabled
   ]))
-  jenkins_enabled                         = contains(local.enabled_component_names, "jenkins")
-  jenkins_agent_namespace                 = "cicd-build"
-  jenkins_agent_service_account_name      = "jenkins-agent"
-  jenkins_controller_service_account_name = "jenkins-controller"
-  k8s_pss_version                         = "v${join(".", slice(split(".", var.k8s_version), 0, 2))}"
+  k8s_pss_version                         = "v${var.k8s_version}"
 
   component_template_vars = {
     for name, component in var.components : name => merge(
@@ -17,11 +13,6 @@ locals {
       },
       name == "argocd" ? {
         argocd_admin_password_bcrypt = bcrypt(component.config["argocd_admin_password"])
-      } : {},
-      name == "jenkins" ? {
-        jenkins_agent_namespace                 = local.jenkins_agent_namespace
-        jenkins_agent_service_account_name      = local.jenkins_agent_service_account_name
-        jenkins_controller_service_account_name = local.jenkins_controller_service_account_name
       } : {}
     )
   }
