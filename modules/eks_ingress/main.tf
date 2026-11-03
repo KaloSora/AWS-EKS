@@ -75,8 +75,16 @@ resource "helm_release" "aws_load_balancer_controller" {
       replica_count        = var.replica_count
       service_account_name = local.service_account_name
       controller_role_arn  = aws_iam_role.controller.arn
+      acm_certificate_arn  = var.acm_certificate_arn
     }
   )]
 
   depends_on = [aws_iam_role_policy_attachment.controller]
+
+  lifecycle {
+    precondition {
+      condition     = var.acm_certificate_arn == null ? true : split(":", var.acm_certificate_arn)[3] == var.aws_region
+      error_message = "The ACM certificate must be in the same region as the EKS cluster and ALB."
+    }
+  }
 }

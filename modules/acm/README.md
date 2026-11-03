@@ -43,17 +43,23 @@ Targeting includes dependencies such as the hosted zone and omits unrelated root
 changes; inspect the plan for any zone creation/replacement. Deployment requires
 separate approval. The current create script does not target this module.
 
-Use `terraform output -raw acm_certificate_arn` after successful deployment to set
-`alb.ingress.kubernetes.io/certificate-arn` on the application's Ingress, together
-with an HTTPS listener. The output waits for certificate issuance. Configure the
-application hostname's DNS record to the ALB separately.
+The root passes the issued ARN to `module.eks_ingress`, which configures a shared
+certificate policy for Ingresses using class `alb`. Apply that reviewed Controller
+update separately; the ACM apply alone does not configure the class. Configure
+application listener ports and DNS separately; see [the ingress module](../eks_ingress/README.md#shared-acm-certificate).
+For other IngressClasses without a shared certificate policy, use
+`terraform output -raw acm_certificate_arn` to set the application's
+`alb.ingress.kubernetes.io/certificate-arn` annotation. The output waits for issuance.
 
 Non-exportable ACM public certificates used with ALB have no additional certificate
 charge; Route 53 and ALB have separate charges. Retain validation CNAMEs for managed
 renewal while the certificate is in use. Domain/SAN changes can replace the
-certificate; `create_before_destroy` requests the replacement first, but application
-Ingress annotations must be updated to the new ARN before the old certificate can
-be deleted. This module cannot coordinate an externally managed Ingress update.
+certificate; `create_before_destroy` requests the replacement first, but the class
+policy or application annotations must be updated to the new ARN before the old
+certificate can be deleted. The root orders the Helm policy update before old
+certificate destruction, but Controller reconciliation with ALB is asynchronous.
+Verify listener associations; a successful Helm update does not prove the old ARN
+is detached. This module cannot coordinate an externally managed Ingress update.
 Remove listener associations before destroying the certificate. The scoped EKS
 destroy script does not remove this module, its records or the hosted zone.
 

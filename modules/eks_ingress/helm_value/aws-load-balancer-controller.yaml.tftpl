@@ -12,7 +12,13 @@ ingressClass: alb
 ingressClassConfig:
   default: false
 ingressClassParams:
+%{ if acm_certificate_arn != null ~}
+  create: true
+  spec:
+    certificateArn: ${jsonencode([acm_certificate_arn])}
+%{ else ~}
   create: false
+%{ endif ~}
 controllerConfig:
   featureGates:
     ALBGatewayAPI: false

@@ -47,6 +47,7 @@ module "eks_ingress" {
 
   alb_controller_chart_version = var.eks_ingress_chart_version
   replica_count                = var.eks_ingress_replica_count
+  acm_certificate_arn           = module.acm.certificate_arn
 
   tags = {
     Environment = var.aws_env
@@ -71,6 +72,9 @@ terraform plan -var-file=dev.tfvars -target=module.eks_ingress
 Targeting includes dependencies and may propose other infrastructure changes;
 it is not a full-root review or authorization to apply. Authentication must use
 permitted sources; do not source restricted credential files for this command.
+The root's certificate reference also includes `module.acm` and its hosted-zone
+dependencies in scoped creation plans. Confirm DNS delegation and inspect the
+plan even when the certificate has already been applied.
 
 The module creates the `kube-system/aws-load-balancer-controller` ServiceAccount
 through Helm. Its dedicated role trusts only that ServiceAccount and the cluster
@@ -83,7 +87,8 @@ The AWS provider region must match `aws_region`.
 Helm configuration lives in
 `helm_value/aws-load-balancer-controller.yaml.tftpl`. The Helm release renders
 this YAML template with `templatefile`, passing the cluster name, AWS region,
-VPC ID, replica count, ServiceAccount name and generated IRSA role ARN. Dynamic
+VPC ID, replica count, ServiceAccount name, generated IRSA role ARN and optional
+ACM certificate ARN. Dynamic
 strings use `jsonencode` to preserve YAML scalar types and escaping. Keep the
 `.tftpl` file with the module when copying or packaging its Terraform source;
 no generated values file is written to the repository.
@@ -97,8 +102,67 @@ can override supported routing settings using ALB annotations.
 
 This module creates no application, Ingress, ALB, listener, certificate, DNS record,
 PV or PVC. Creating an ALB Ingress later causes the Controller to provision AWS
-resources. Public HTTP/HTTPS configuration, trusted client CIDRs, ACM certificate,
-DNS, application health paths and backend ports belong to that application.
+resources. Public/internal scheme, listener ports, trusted client CIDRs, DNS,
+application health paths and backend ports belong to that application.
+
+### Shared ACM certificate
+
+The optional `acm_certificate_arn` input configures the chart-managed
+`IngressClassParams.spec.certificateArn` and links the existing `alb` IngressClass
+to it. The root passes the issued `module.acm.certificate_arn`, so certificate
+validation precedes the Controller Helm update. The certificate must be issued,
+belong to the ALB account and region, and cover each application's hostname.
+The module validates ARN syntax and region; it does not perform live certificate
+status, account ownership or hostname checks.
+
+This is a class-wide setting: it overrides certificate annotations on **all**
+Ingresses using `ingressClassName: alb`, including existing ones. Review those
+Ingresses before applying, especially ones using other domains or certificates.
+Standalone callers default to `null`, which preserves per-application certificate
+annotations/discovery and creates no IngressClassParams. Returning to `null` removes
+the shared policy; configure application certificates before doing so.
+
+With a shared certificate and no `listen-ports` annotation, Controller v3.6.2
+defaults to HTTPS 443. An existing explicit HTTP-only annotation remains HTTP-only.
+For HTTP-to-HTTPS redirection, configure the application Ingress as follows,
+keeping its actual namespace, Service, port and health checks:
+
+```yaml
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: web
+  namespace: default
+  annotations:
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+spec:
+  ingressClassName: alb
+  rules:
+    - host: app.kalosora.live
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: web
+                port:
+                  number: 80
+```
+
+No TLS Secret or certificate annotation is needed in this mode. Keep the existing
+scheme annotation if present; this module does not change public/internal exposure.
+Point the application DNS name to the ALB separately. If Helm/GitOps owns the
+Ingress, update its source values/manifests. A Helm update alone does not create
+an application ALB or prove HTTPS traffic works.
+
+Existing installations must have the v3.6.2 IngressClassParams CRD schema, including
+`spec.certificateArn`. Helm upgrades do not update CRDs automatically; review any
+required CRD upgrade separately before applying. Do not import or adopt an existing
+IngressClassParams owned by another tool. The chart's bundled parameter object
+is exempted from its own validation webhook to avoid installation dependency
+cycles, so validate the rendered resource against the pinned CRD before deployment.
 
 Two Controller replicas are requested by default, with 100m CPU / 128Mi memory
 requests and a 256Mi memory limit per Pod. Replica placement and availability
@@ -166,4 +230,5 @@ verification is implied by local Terraform/Helm validation.
 
 - [Controller v3.6.2 installation](https://github.com/kubernetes-sigs/aws-load-balancer-controller/blob/v3.6.2/docs/deploy/installation.md)
 - [ALB Ingress configuration](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/ingress/annotations/)
+- [IngressClass certificate policy](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/guide/ingress/ingress_class/#speccertificatearn)
 - [IRSA trust policies](https://docs.aws.amazon.com/eks/latest/userguide/associate-service-account-role.html)

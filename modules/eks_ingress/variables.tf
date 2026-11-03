@@ -55,6 +55,20 @@ variable "replica_count" {
   }
 }
 
+variable "acm_certificate_arn" {
+  description = "Optional issued ACM certificate enforced for all Ingresses using class alb; null preserves per-application certificate configuration"
+  type        = string
+  default     = null
+
+  validation {
+    condition = var.acm_certificate_arn == null ? true : can(regex(
+      "^arn:aws:acm:[a-z0-9-]+:[0-9]{12}:certificate/[0-9a-f-]+$",
+      var.acm_certificate_arn
+    ))
+    error_message = "acm_certificate_arn must be null or an ACM certificate ARN in the standard AWS partition."
+  }
+}
+
 variable "tags" {
   description = "Tags for the Controller IAM role and policy"
   type        = map(string)

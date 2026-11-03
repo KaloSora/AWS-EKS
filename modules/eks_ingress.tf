@@ -6,6 +6,7 @@ module "eks_ingress" {
   vpc_id                       = module.vpc.vpc_id
   alb_controller_chart_version = var.eks_ingress_chart_version
   replica_count                = var.eks_ingress_replica_count
+  acm_certificate_arn          = module.acm.certificate_arn
 
   tags = {
     Environment = var.aws_env
