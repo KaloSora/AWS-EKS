@@ -12,3 +12,8 @@ output "nat_public_ip" {
   description = "Public egress IP shared by private nodes"
   value       = var.nat_instance_enable ? module.ec2_nat_instance[0].public_ip : null
 }
+
+output "acm_certificate_arn" {
+  description = "Issued ACM certificate ARN to configure on an application ALB Ingress"
+  value       = module.acm.certificate_arn
+}

@@ -10,6 +10,9 @@ budget_unit   = "USD"
 # Namecheap domain expires on Nov 2, 2027
 hosted_zone_name = "kalosora.live"
 
+# ACM certificate also covers first-level subdomains.
+acm_subject_alternative_names = ["*.kalosora.live"]
+
 ### AWS resources
 aws_account_id = "823058656952"
 aws_region     = "ap-southeast-1"

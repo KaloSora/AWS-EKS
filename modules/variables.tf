@@ -29,6 +29,13 @@ variable "hosted_zone_name" {
   description = "AWS Route53 hosted_zone name"
 }
 
+variable "acm_subject_alternative_names" {
+  description = "Additional ACM names within hosted_zone_name; use *.domain for first-level subdomains"
+  type        = set(string)
+  default     = []
+  nullable    = false
+}
+
 variable "aws_account_id" {
   type        = string
   description = "AWS account ID"
