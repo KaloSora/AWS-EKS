@@ -1,5 +1,58 @@
 # AWS-EKS
 
+## EKS Platform Tool
+
+This section describes the platform tools to introduce incrementally on this
+standard EKS cluster. It is a roadmap, not a list of deployed services. Existing
+Terraform configuration covers VPC CNI/CoreDNS/kube-proxy, the AWS Load Balancer
+Controller, optional EBS/EFS CSI add-ons and StorageClasses. Configuration alone
+is not evidence of a successful deployment. Argo CD has component inventory
+scaffolding, but `modules/eks_platform` does not yet install its Helm release.
+
+| Layer | Tools | Purpose |
+| :--- | :--- | :--- |
+| Networking and network policy | [Amazon VPC CNI](https://docs.aws.amazon.com/eks/latest/best-practices/networking.html) / [Calico](https://docs.tigera.io/calico/latest/getting-started/kubernetes/managed-public-cloud/eks/) | VPC CNI assigns VPC IP addresses to Pods. NetworkPolicy controls allowed Pod traffic. |
+| Ingress and HTTPS | [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/) + ACM | Reconciles application Ingresses into ALBs and configures routing and TLS termination with ACM certificates. |
+| DNS automation | [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/latest/) + Route 53 | Reconciles application DNS records from selected Kubernetes resources. |
+| Application delivery | Helm / Kustomize + [Argo CD](https://argo-cd.readthedocs.io/en/stable/) | Helm packages applications; Kustomize applies environment overlays; Argo CD reconciles their desired state from Git. |
+| Metrics, dashboards and alerts | [Prometheus Operator](https://prometheus-operator.dev/docs/getting-started/introduction/) / kube-prometheus-stack, Grafana, Alertmanager; CloudWatch | Prometheus collects metrics, Grafana provides dashboards, and Alertmanager routes alerts. CloudWatch supplies AWS service telemetry and an optional managed observability path. |
+| Centralized logging | Fluent Bit + CloudWatch Logs, or [Grafana Alloy](https://grafana.com/docs/alloy/latest/collect/) + Loki | Agents collect and forward container logs; CloudWatch Logs or Loki stores and queries them; Grafana can visualize Loki logs. |
+| Distributed tracing | [OpenTelemetry Collector](https://opentelemetry.io/docs/collector/) + Tempo or AWS X-Ray | Collects instrumented application traces to investigate latency and requests across services. |
+| Workload identity and secrets | IRSA / EKS Pod Identity; [External Secrets Operator](https://external-secrets.io/latest/provider/aws-secrets-manager/) + AWS Secrets Manager; HashiCorp Vault | Workload identity grants scoped AWS access. External Secrets synchronizes external values into Kubernetes Secrets. Vault offers additional secret lifecycle and dynamic-credential capabilities. |
+| Persistent storage | [Amazon EBS CSI Driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html) / [Amazon EFS CSI Driver](https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html) | EBS provides block volumes, typically for single-node writers; EFS provides shared NFS storage for multiple Pods/nodes. CSI drivers integrate these services with PVC provisioning and mounts. |
+| Pod autoscaling | [Metrics Server](https://kubernetes-sigs.github.io/metrics-server/) + HPA; optional [KEDA](https://keda.sh/docs/latest/concepts/) | Metrics Server supplies resource metrics; HPA changes Pod replica counts; KEDA adds event-driven scaling. |
+| Node autoscaling | [Karpenter](https://karpenter.sh/docs/) or Cluster Autoscaler | Karpenter provisions suitable EC2 capacity for pending Pods and consolidates nodes; Cluster Autoscaler adjusts configured node groups. |
+| Policy and supply-chain security | [Kyverno](https://kyverno.io/docs/introduction/) + [Trivy](https://trivy.dev/docs/latest/guide/) | Kyverno validates or mutates Kubernetes resources and can enforce image policies. Trivy scans images and configuration for vulnerabilities, misconfiguration and exposed secrets. |
+| Backup and recovery | [Velero](https://velero.io/docs/) / [AWS Backup](https://docs.aws.amazon.com/aws-backup/latest/devguide/eks-backups.html) | Protect Kubernetes resource definitions and supported persistent data through the selected backup integrations. |
+| Infrastructure self-service | [Crossplane](https://docs.crossplane.io/latest/) | Exposes platform APIs and continuously reconciles infrastructure through providers and compositions. |
+| Internal developer portal | [Backstage](https://backstage.io/docs/overview/what-is-backstage/) | Provides a service catalog, documentation and software templates that can connect GitOps and infrastructure self-service workflows. |
+
+### Suggested rollout
+
+1. **Establish the baseline:** verify existing network, ingress/ACM and storage;
+   finish Argo CD bootstrap; introduce workload identity and external secrets.
+2. **Operate applications:** add metrics/alerts and one logging pipeline, then
+   DNS automation, policy/scanning and backup with a successful restore drill.
+3. **Expand when justified:** add Pod autoscaling, evaluate node autoscaling,
+   introduce tracing, then consider Crossplane and Backstage for self-service.
+
+### Implementation and cost boundaries
+
+Terraform should own the EKS infrastructure and explicitly selected bootstrap
+components. GitOps can own subsequent platform charts and applications. Record
+ownership for Helm releases, Kubernetes objects, AWS resources and DNS records
+so that two controllers do not reconcile the same resource. Before adoption,
+review compatible EKS/chart/CRD versions, IAM/RBAC, resource requests, persistent
+storage, upgrades, teardown and validation; no versions are pinned by this roadmap.
+
+Open-source software does not make its infrastructure free. Prometheus/Loki/Vault
+consume node capacity and storage; ALBs, Route 53, Secrets Manager, CloudWatch,
+backup storage and additional EC2 nodes can incur charges. Prefer a small initial
+stack with bounded retention and workload-driven scaling. AWS Budgets alerts do
+not enforce a spending cap. Use each service's default/managed encryption when it
+meets requirements; introduce customer-managed KMS keys only when their additional
+control is needed, with key and API costs reviewed separately.
+
 ## Terraform Runbook
 | Step | Command | Description |
 | :--- | :--- | :--- |
