@@ -13,6 +13,7 @@ scaffolding, but `modules/eks_platform` does not yet install its Helm release.
 | :--- | :--- | :--- | :---: |
 | Networking and network policy | [Amazon VPC CNI](https://docs.aws.amazon.com/eks/latest/best-practices/networking.html) / [Calico](https://docs.tigera.io/calico/latest/getting-started/kubernetes/managed-public-cloud/eks/) | VPC CNI assigns VPC IP addresses to Pods. NetworkPolicy controls allowed Pod traffic. | ☑ |
 | Ingress and HTTPS | [AWS Load Balancer Controller](https://kubernetes-sigs.github.io/aws-load-balancer-controller/latest/) + ACM | Reconciles application Ingresses into ALBs and configures routing and TLS termination with ACM certificates. | ☑ |
+| Service Mesh | [Istio](https://istio.io/latest/docs/) / [Linkerd](https://linkerd.io/docs/overview/) | Manages service-to-service communication with mutual TLS (mTLS), traffic routing, retries/timeouts, authorization policies and service-level telemetry. | ☐ |
 | DNS automation | [ExternalDNS](https://kubernetes-sigs.github.io/external-dns/latest/) + Route 53 | Reconciles application DNS records from selected Kubernetes resources. | ☑ |
 | Application delivery | Helm / Kustomize + [Argo CD](https://argo-cd.readthedocs.io/en/stable/) | Helm packages applications; Kustomize applies environment overlays; Argo CD reconciles their desired state from Git. | ☐ |
 | Metrics, dashboards and alerts | [Prometheus Operator](https://prometheus-operator.dev/docs/getting-started/introduction/) / kube-prometheus-stack, Grafana, Alertmanager; CloudWatch | Prometheus collects metrics, Grafana provides dashboards, and Alertmanager routes alerts. CloudWatch supplies AWS service telemetry and an optional managed observability path. | ☐ |
@@ -25,7 +26,7 @@ scaffolding, but `modules/eks_platform` does not yet install its Helm release.
 | Policy and supply-chain security | [Kyverno](https://kyverno.io/docs/introduction/) + [Trivy](https://trivy.dev/docs/latest/guide/) | Kyverno validates or mutates Kubernetes resources and can enforce image policies. Trivy scans images and configuration for vulnerabilities, misconfiguration and exposed secrets. | ☐ |
 | Backup and recovery | [Velero](https://velero.io/docs/) / [AWS Backup](https://docs.aws.amazon.com/aws-backup/latest/devguide/eks-backups.html) | Protect Kubernetes resource definitions and supported persistent data through the selected backup integrations. | ☐ |
 | Infrastructure self-service | [Crossplane](https://docs.crossplane.io/latest/) | Exposes platform APIs and continuously reconciles infrastructure through providers and compositions. | ☐ |
-| Internal developer portal | [Backstage](https://backstage.io/docs/overview/what-is-backstage/) | Provides a service catalog, documentation and software templates that can connect GitOps and infrastructure self-service workflows. | ☐ |
+| Internal developer portal （IDP） | [Backstage](https://backstage.io/docs/overview/what-is-backstage/) | Provides a service catalog, documentation and software templates that can connect GitOps and infrastructure self-service workflows. | ☐ |
 
 ### Suggested rollout
 
@@ -57,8 +58,8 @@ control is needed, with key and API costs reviewed separately.
 | Step | Command | Description |
 | :--- | :--- | :--- |
 | 1 | `terraform init -backend-config="dev.s3.tfbackend"` | Terraform initialization with backend S3 bucket |
-| 2 | `terraform apply -target=module.budget_alert -var-file="dev.tfvars"` | Create AWS VPC |
-| 3 | `terraform apply -target=module.route53 -var-file="dev.tfvars"` | Create AWS Hosted Zone |
+| 2 | `terraform apply -target=module.budget_alert -var-file="dev.tfvars"` | Create Budget Alert |
+| 3 | `terraform apply -target=module.route53 -var-file="dev.tfvars"` | Create AWS hosted zone |
 | 4 | `terraform apply -target=module.acm -var-file="dev.tfvars"` | Create ACM SSL Cert for hosted zone |
 | 5 | `terraform apply -target=module.vpc -var-file="dev.tfvars"` | Create AWS VPC |
 | 6 | `terraform apply -target=module.vpc_endpoint -var-file="dev.tfvars"` | Create VPC S3 Gateway endpoint only. |
