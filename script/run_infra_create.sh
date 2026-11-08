@@ -14,7 +14,8 @@ set -Eeuo pipefail
 #   2. Report nat_instance_enable and create module.eks dependencies
 #   3. Save a local kubeconfig
 #   4. Create module.eks_storage and its EFS dependencies
-#   5. Create module.eks_ingress (Controller, dedicated IRSA); print access examples
+#   5. Create module.eks_ingress (Controller, dedicated IRSA)
+#   6. Create module.app namespaces; print access examples
 # ============================================================
 
 # ------------------------------------------------------------
@@ -136,11 +137,11 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "1/4 - Create EKS and Required Dependencies" "$@"; then
+if ! run_step "1/5 - Create EKS and Required Dependencies" "$@"; then
     error "EKS apply failed. Preserve state/recovery files and inspect AWS node groups before retrying or destroying IAM roles."
 fi
 
-if ! run_step "2/4 - Configure Local kubeconfig" configure_kubeconfig; then
+if ! run_step "2/5 - Configure Local kubeconfig" configure_kubeconfig; then
     error "EKS apply completed, but local kubeconfig setup failed. Check the local path and AWS permissions; infrastructure has not been rolled back."
 fi
 
@@ -155,7 +156,7 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "3/4 - Create StorageClasses and EFS Dependencies" "$@"; then
+if ! run_step "3/5 - Create StorageClasses and EFS Dependencies" "$@"; then
     error "Storage apply failed. EKS and any partially created EFS/Helm resources have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
@@ -170,8 +171,23 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "4/4 - Create AWS Load Balancer Controller" "$@"; then
+if ! run_step "4/5 - Create AWS Load Balancer Controller" "$@"; then
     error "Ingress Controller apply failed. Existing infrastructure and any partial IAM/Helm resources have not been rolled back. Preserve recovery files and review state before retrying."
+fi
+
+log "Application Namespace Configuration"
+echo "The app target creates dev, uat, preprod and prod namespaces with restricted Pod Security."
+echo "It does not deploy application workloads; review dependency changes in the plan."
+assert_nodegroups_tracked
+set -- terraform -chdir="$TF_DIR" apply \
+    -target=module.app \
+    -var-file="$TF_VAR_FILE"
+if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
+    set -- "$@" -auto-approve
+fi
+
+if ! run_step "5/5 - Create Application Namespaces" "$@"; then
+    error "Application namespace apply failed. Existing infrastructure and partially created namespaces have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
 # ------------------------------------------------------------
@@ -185,7 +201,7 @@ log "Terraform Outputs"
 terraform -chdir="$TF_DIR" output
 
 log "CREATE COMPLETED"
-echo "EKS, EFS dependencies, StorageClasses and AWS Load Balancer Controller have been deployed."
+echo "EKS, EFS dependencies, StorageClasses, AWS Load Balancer Controller and application namespaces have been deployed."
 echo "Local kubeconfig   : ${KUBECONFIG_FILE} (permissions: 600)"
 echo "kubectl examples (requires a valid authorized AWS session):"
 printf '  kubectl --kubeconfig %q --context %q get nodes\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"

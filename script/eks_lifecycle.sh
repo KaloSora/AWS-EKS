@@ -197,3 +197,13 @@ assert_ingress_cleanup_complete() {
     echo "[PASS] No cluster-tagged AWS load balancers or target groups found."
     echo "Review untagged resources and residual security groups separately; stop controllers that could recreate ingress resources."
 }
+
+# Include partial namespace creation; fail closed if state cannot be read.
+load_app_state() {
+    local state
+    state="$(terraform -chdir="$TF_DIR" show -json)" || return $?
+    APP_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        [.. | objects | select(.mode? == "managed") |
+          select((.address? // "") | startswith("module.app."))] |
+        if length > 0 then "true" else "false" end')" || return $?
+}

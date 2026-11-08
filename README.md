@@ -68,6 +68,7 @@ control is needed, with key and API costs reviewed separately.
 | 9 | `terraform apply -target=module.eks_efs -var-file="dev.tfvars"` | Create AWS EFS |
 | 10 | `terraform apply -target=module.eks_storage -var-file="dev.tfvars"` | Create AWS Storage for EFS and EBS |
 | 11 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
+| 12 | `terraform apply -target=module.app -var-file="dev.tfvars"` | Create application namespace |
 
 ## Reference
 [Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)

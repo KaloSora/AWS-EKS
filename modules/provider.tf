@@ -5,6 +5,11 @@ terraform {
       version = "~> 6.0"
     }
 
+    kubernetes = {
+      source  = "hashicorp/kubernetes"
+      version = "~> 3.0"
+    }
+
     helm = {
       source  = "hashicorp/helm"
       version = "~> 3.0"
@@ -23,7 +28,12 @@ provider "aws" {
 
 provider "helm" {
   kubernetes = {
-    config_path = abspath("${path.root}/${var.eks_kubeconfig_file}")
+    config_path    = abspath("${path.root}/${var.eks_kubeconfig_file}")
     config_context = "${var.aws_env}-eks"
   }
+}
+
+provider "kubernetes" {
+  config_path    = abspath("${path.root}/${var.eks_kubeconfig_file}")
+  config_context = "${var.aws_env}-eks"
 }

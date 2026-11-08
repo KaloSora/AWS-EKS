@@ -37,15 +37,23 @@ if kind == 'terraform':
         if mode == 'ingress_state_failure':
             shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
             if sum(c[0] == 'terraform' and 'show' in c for c in shows) >= 3: sys.exit(2)
+        if mode == 'app_state_failure':
+            shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
+            if sum(c[0] == 'terraform' and 'show' in c for c in shows) >= 4: sys.exit(2)
         groups = [] if mode == 'orphan' else [{'type':'aws_eks_node_group','values':{'cluster_name':'dev-eks','node_group_name':'dev-eks-general'}}]
-        if mode not in ['storage_untracked', 'absent_cluster', 'absent_cluster_with_ingress', 'absent_cluster_with_aws_lb']:
+        if mode not in ['storage_untracked', 'absent_cluster', 'absent_cluster_with_ingress', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app']:
             groups.append({'type':'helm_release', 'address':'module.eks_storage.helm_release.storage_classes'})
-        if mode not in ['ingress_untracked', 'absent_cluster', 'absent_cluster_with_aws_lb']:
+        if mode not in ['ingress_untracked', 'absent_cluster', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app']:
             groups.append({'mode':'managed', 'type':'aws_iam_role', 'address':'module.eks_ingress.aws_iam_role.controller'})
             if mode != 'ingress_iam_only':
                 groups.append({'mode':'managed', 'type':'helm_release', 'address':'module.eks_ingress.helm_release.aws_load_balancer_controller'})
+        if mode in ['app_tracked', 'app_destroy_failure', 'absent_cluster_with_app']:
+            groups.append({'mode':'managed', 'type':'kubernetes_namespace',
+                           'address':'module.app.kubernetes_namespace.environment["dev"]'})
         groups.append({'type':'aws_efs_file_system', 'address':'module.eks_efs.aws_efs_file_system.this', 'values':{'id':'fs-0123456789abcdef0'}})
         print(json.dumps({'values':{'root_module':{'child_modules':[{'resources':groups}]}}}))
+    elif 'destroy' in args and '-target=module.app' in args:
+        if mode == 'app_destroy_failure': sys.exit(2)
     elif 'destroy' in args and '-target=module.eks_ingress' in args:
         if mode == 'ingress_destroy_failure': sys.exit(2)
     elif 'destroy' in args and '-target=module.eks_efs' in args:
@@ -55,6 +63,8 @@ if kind == 'terraform':
     elif 'destroy' in args and '-target=module.eks.aws_eks_node_group.this' in args:
         if mode == 'terraform_failure': sys.exit(2)
         marker.touch()
+    elif 'apply' in args and mode == 'app_apply_failure' and '-target=module.app' in args:
+        sys.exit(2)
     elif 'apply' in args and mode == 'ingress_apply_failure' and '-target=module.eks_ingress' in args:
         sys.exit(2)
     elif 'apply' in args and mode == 'storage_apply_failure' and '-target=module.eks_storage' in args:
@@ -231,7 +241,7 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_destroy.sh','terraform_failure')
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(self.destroys(calls),['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
-        self.assertNotIn('[PASS] STEP 5',result.stdout)
+        self.assertNotIn('[PASS] STEP 6',result.stdout)
 
     def test_access_denied_is_not_treated_as_missing_cluster(self):
         result,calls = self.run_script('run_infra_destroy.sh','access_denied')
@@ -242,6 +252,42 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_destroy.sh','absent_cluster')
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(len(self.destroys(calls)),4)
+
+    def test_app_destroy_follows_volume_cleanup_and_precedes_storage(self):
+        result, calls = self.run_script('run_infra_destroy.sh', 'app_tracked')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.destroys(calls), [
+            '-target=module.eks_ingress', '-target=module.app',
+            '-target=module.eks_storage', '-target=module.eks_efs',
+            '-target=module.eks.aws_eks_node_group.this', '-target=module.eks',
+            '-target=module.ec2_nat_instance',
+        ])
+        app = next(i for i, c in enumerate(calls) if 'destroy' in c and '-target=module.app' in c)
+        cleanup = [i for i, c in enumerate(calls) if c[0] == 'kubectl']
+        self.assertLess(max(cleanup), app)
+        self.assertIn('all resources inside app namespaces', result.stdout)
+
+    def test_app_destroy_failure_stops_before_storage_nodes_and_nat(self):
+        result, calls = self.run_script('run_infra_destroy.sh', 'app_destroy_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.destroys(calls), ['-target=module.eks_ingress', '-target=module.app'])
+        self.assertNotIn('DESTROY COMPLETED', result.stdout)
+
+    def test_app_state_failure_and_absent_cluster_block_teardown(self):
+        for mode in ['app_state_failure', 'absent_cluster_with_app']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.destroys(calls), [])
+                self.assertNotIn('DESTROY COMPLETED', result.stdout)
+
+    def test_app_apply_failure_stops_without_rollback_or_completion(self):
+        result, calls = self.run_script('run_infra_create.sh', 'app_apply_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Application namespace apply failed', result.stderr)
+        self.assertNotIn('CREATE COMPLETED', result.stdout)
+        self.assertNotIn('[PASS] STEP 5', result.stdout)
+        self.assertEqual(self.destroys(calls), [])
 
     def test_create_refuses_untracked_group(self):
         result,calls = self.run_script('run_infra_create.sh','orphan')
@@ -262,7 +308,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(any('apply' in c for c in calls if c[0]=='terraform'))
         targets = [next(arg for arg in c if arg.startswith('-target='))
                    for c in calls if c[0] == 'terraform' and 'apply' in c]
-        self.assertEqual(targets, ['-target=module.eks', '-target=module.eks_storage', '-target=module.eks_ingress'])
+        self.assertEqual(targets, ['-target=module.eks', '-target=module.eks_storage', '-target=module.eks_ingress', '-target=module.app'])
         update = next(i for i, c in enumerate(calls) if c[:3] == ['aws', 'eks', 'update-kubeconfig'])
         storage = next(i for i, c in enumerate(calls) if 'apply' in c and '-target=module.eks_storage' in c)
         self.assertLess(update, storage)
@@ -369,14 +415,14 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_create.sh', auto_approve=None)
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 3)
+        self.assertEqual(len(applies), 4)
         self.assertTrue(all('-auto-approve' not in c for c in applies))
 
     def test_create_auto_approve_option(self):
         result,calls = self.run_script('run_infra_create.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 3)
+        self.assertEqual(len(applies), 4)
         self.assertTrue(all('-auto-approve' in c for c in applies))
 
     def test_invalid_auto_approve_fails_before_cloud_calls(self):
@@ -440,7 +486,7 @@ class LifecycleTests(unittest.TestCase):
         self.assertEqual(self.destroys(calls), [])
 
     def test_absent_cluster_with_ingress_or_aws_residue_stops_cleanup(self):
-        for mode in ['absent_cluster_with_ingress', 'absent_cluster_with_aws_lb']:
+        for mode in ['absent_cluster_with_ingress', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app']:
             with self.subTest(mode=mode):
                 result, calls = self.run_script('run_infra_destroy.sh', mode)
                 self.assertNotEqual(result.returncode, 0)
