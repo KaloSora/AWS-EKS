@@ -89,8 +89,11 @@ eks_components = {
     wait_for_jobs   = false
     value_templates = ["argocd.yaml"]
     config = {
-      argocd_url            = "argocd.core.com"
-      argocd_admin_password = "ArgoCD12345"
+      argocd_url = "argocd.kalosora.live"
+
     }
   }
 }
+
+# Expose the Argo CD HTTPS ALB to the same CIDRs as the public EKS API.
+eks_argocd_ingress_enabled = true

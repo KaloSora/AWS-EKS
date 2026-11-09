@@ -1,5 +1,5 @@
 variable "components" {
-  description = "CI/CD component inventory rendered through the generic Helm component module"
+  description = "Platform component inventory rendered through the generic Helm component module"
   sensitive   = true
 
   type = map(object({
@@ -43,8 +43,18 @@ variable "components" {
       for component in values(var.components) : component.namespace
       if component.enabled
     ])
-    error_message = "Enabled CI/CD components must use unique namespaces."
+    error_message = "Enabled platform components must use unique namespaces."
   }
+
+  validation {
+    condition = alltrue([
+      for component in values(var.components) :
+      can(regex("^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$", component.version)) &&
+      component.timeout > 0 && component.timeout == floor(component.timeout)
+    ])
+    error_message = "Components must pin a chart version and use a positive integer timeout."
+  }
+
 }
 
 variable "storage_class_name" {
@@ -55,4 +65,26 @@ variable "storage_class_name" {
 variable "k8s_version" {
   description = "Kubernetes version for the EKS cluster"
   type        = string
+}
+
+variable "argocd_ingress" {
+  description = "Optional ALB and Route 53 settings for the enabled Argo CD component"
+  type = object({
+    ingress_class    = string
+    certificate_arn  = string
+    hosted_zone_id   = string
+    hosted_zone_name = string
+    alb_name         = string
+    inbound_cidrs    = list(string)
+  })
+  default = null
+
+  validation {
+    condition = var.argocd_ingress == null ? true : (
+      length(var.argocd_ingress.inbound_cidrs) > 0 && alltrue([
+        for cidr in var.argocd_ingress.inbound_cidrs : try(cidrnetmask(cidr) != "0.0.0.0", false)
+      ])
+    )
+    error_message = "An Argo CD ALB requires at least one trusted IPv4 CIDR and cannot allow 0.0.0.0/0."
+  }
 }

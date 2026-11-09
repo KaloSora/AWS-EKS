@@ -3,17 +3,14 @@ locals {
     for name, component in var.components : name
     if component.enabled
   ]))
-  k8s_pss_version                         = "v${var.k8s_version}"
+  k8s_pss_version = "v${var.k8s_version}"
 
   component_template_vars = {
     for name, component in var.components : name => merge(
       component.config,
       {
         storage_class = var.storage_class_name
-      },
-      name == "argocd" ? {
-        argocd_admin_password_bcrypt = bcrypt(component.config["argocd_admin_password"])
-      } : {}
+      }
     )
   }
 
@@ -42,4 +39,21 @@ resource "kubernetes_namespace" "component" {
       "pod-security.kubernetes.io/warn-version"  = local.k8s_pss_version
     }
   }
+}
+
+# Terraform owns the namespace; Helm owns the platform release and its resources.
+resource "helm_release" "component" {
+  for_each = local.enabled_component_names
+
+  name             = var.components[each.key].release_name
+  namespace        = kubernetes_namespace.component[each.key].metadata[0].name
+  repository       = var.components[each.key].repository
+  chart            = var.components[each.key].chart
+  version          = var.components[each.key].version
+  timeout          = var.components[each.key].timeout
+  atomic           = var.components[each.key].atomic
+  wait             = var.components[each.key].wait
+  wait_for_jobs    = var.components[each.key].wait_for_jobs
+  create_namespace = false
+  values           = local.rendered_component_values[each.key]
 }

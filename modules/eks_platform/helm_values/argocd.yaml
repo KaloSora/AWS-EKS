@@ -1,0 +1,35 @@
+# Argo CD keeps its generated initial admin password in a Kubernetes Secret.
+# No password is supplied to Helm or embedded in the Terraform configuration.
+${yamlencode({
+  global = {
+    domain = argocd_url
+  }
+  crds = {
+    install = true
+    keep    = true
+  }
+  configs = {
+    params = {
+      "server.insecure" = false
+    }
+  }
+  dex = {
+    enabled = false
+  }
+  notifications = {
+    enabled = false
+  }
+  # Chart 10.10.3 always renders this Deployment. Zero replicas stop its pods.
+  applicationSet = {
+    replicas = 0
+  }
+  server = {
+    service = {
+      type = "ClusterIP"
+    }
+    ingress = {
+      # Terraform owns the Ingress so it can wait for the ALB before publishing DNS.
+      enabled = false
+    }
+  }
+})}
