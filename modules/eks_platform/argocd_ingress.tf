@@ -13,6 +13,7 @@ resource "kubernetes_ingress_v1" "argocd" {
 
   wait_for_load_balancer = true
 
+  # Depends on the Argo CD Helm release to create the argocd namespace and service.
   metadata {
     name      = "argocd"
     namespace = helm_release.component["argocd"].namespace
