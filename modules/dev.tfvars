@@ -76,6 +76,27 @@ eks_efs_file_system_name = "dev-eks-efs"
 eks_efs_throughput_mode  = "bursting"
 
 eks_components = {
+  karpenter = {
+    enabled         = true
+    release_name    = "karpenter"
+    namespace       = "karpenter"
+    repository      = "oci://public.ecr.aws/karpenter"
+    chart           = "karpenter"
+    version         = "1.15.1"
+    timeout         = 600
+    atomic          = true
+    wait            = true
+    wait_for_jobs   = false
+    value_templates = ["karpenter.yaml"]
+    config = {
+      replicas             = "1"
+      ec2_node_class_name  = "default"
+      provisioning_enabled = "false" # Opt in after reviewing the AMI and capacity limit.
+      ami_alias            = ""      # Set a pinned AL2023 alias before enabling provisioning.
+      node_pool_cpu_limit  = "2"     # Total vCPU for this pool, separate from the managed node group.
+    }
+  }
+
   argocd = {
     enabled         = true
     release_name    = "argocd"

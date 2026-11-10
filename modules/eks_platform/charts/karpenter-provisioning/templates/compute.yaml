@@ -1,0 +1,3 @@
+{{ toYaml .Values.nodeClass }}
+---
+{{ toYaml .Values.nodePool }}

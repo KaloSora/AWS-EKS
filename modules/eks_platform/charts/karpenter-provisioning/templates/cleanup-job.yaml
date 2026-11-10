@@ -1,0 +1,48 @@
+{{- $image := "registry.k8s.io/kubectl:v1.36.0@sha256:63e5e76b746bb8b891a94968d380736c035e768dab0d56ddad1f50c750a4be39" -}}
+{{- $pool := printf "nodepools.karpenter.sh/%s" .Values.nodePool.metadata.name -}}
+{{- $class := printf "ec2nodeclasses.karpenter.k8s.aws/%s" .Values.nodeClass.metadata.name -}}
+{{- $steps := list
+  (dict "name" "delete-pool" "args" (list "delete" $pool "--cascade=foreground" "--ignore-not-found" "--wait=false"))
+  (dict "name" "wait-pool" "args" (list "wait" "--for=delete" $pool "--timeout=15m"))
+  (dict "name" "wait-claims" "args" (list "wait" "--for=delete" "nodeclaims.karpenter.sh" "-l" (printf "karpenter.sh/nodepool=%s" .Values.nodePool.metadata.name) "--timeout=15m"))
+  (dict "name" "delete-class" "args" (list "delete" $class "--ignore-not-found" "--wait=false")) -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .Release.Name }}-cleanup
+  namespace: {{ .Release.Namespace }}
+  annotations:
+    helm.sh/hook: pre-delete
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 0
+  activeDeadlineSeconds: 1100
+  template:
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ .Release.Name }}-cleanup
+      nodeSelector:
+        eks.amazonaws.com/nodegroup: {{ .Values.managedNodeGroupName | quote }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        {{- range $steps }}
+        - name: {{ .name }}
+          image: {{ $image }}
+          args: {{ concat (list "--cache-dir=/tmp/kube-cache") .args | toJson }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+        {{- end }}
+      containers:
+        - name: wait-class
+          image: {{ $image }}
+          args: {{ list "--cache-dir=/tmp/kube-cache" "wait" "--for=delete" $class "--timeout=15m" | toJson }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

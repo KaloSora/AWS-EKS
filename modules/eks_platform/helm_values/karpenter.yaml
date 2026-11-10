@@ -1,0 +1,16 @@
+${yamlencode({
+  replicas = tonumber(replicas)
+  serviceAccount = {
+    name = service_account_name
+    annotations = {
+      "eks.amazonaws.com/role-arn" = controller_role_arn
+    }
+  }
+  nodeSelector = {
+    "eks.amazonaws.com/nodegroup" = managed_node_group_name
+  }
+  settings = {
+    clusterName     = cluster_name
+    clusterEndpoint = cluster_endpoint
+  }
+})}

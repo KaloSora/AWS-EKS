@@ -10,7 +10,14 @@ locals {
       component.config,
       {
         storage_class = var.storage_class_name
-      }
+      },
+      name == "karpenter" && var.karpenter_cluster != null ? {
+        cluster_name            = var.karpenter_cluster.name
+        cluster_endpoint        = var.karpenter_cluster.endpoint
+        managed_node_group_name = var.karpenter_cluster.managed_node_group_name
+        controller_role_arn     = one(aws_iam_role.karpenter_controller[*].arn)
+        service_account_name    = local.karpenter_service_account
+      } : {}
     )
   }
 
@@ -56,4 +63,9 @@ resource "helm_release" "component" {
   wait_for_jobs    = var.components[each.key].wait_for_jobs
   create_namespace = false
   values           = local.rendered_component_values[each.key]
+
+  depends_on = [
+    aws_iam_role_policy.karpenter_controller,
+    aws_eks_access_entry.karpenter_node,
+  ]
 }

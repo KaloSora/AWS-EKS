@@ -32,3 +32,8 @@ output "node_role_arn" {
   description = "Node IAM role ARN"
   value       = aws_iam_role.node.arn
 }
+
+output "oidc_provider_arn" {
+  description = "Cluster IAM OIDC provider ARN when IRSA is enabled through CSI"
+  value       = one(aws_iam_openid_connect_provider.csi[*].arn)
+}
