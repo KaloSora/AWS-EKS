@@ -19,6 +19,7 @@ with open(os.environ['TEST_TRACE'], 'a') as f:
     f.write(json.dumps([kind, *args]) + '\n')
 mode = os.environ['TEST_MODE']
 marker = Path(os.environ['TEST_DELETED'])
+platform_deleted = marker.with_name('platform-deleted')
 if kind == 'terraform':
     if 'console' in args:
         expression = sys.stdin.read()
@@ -40,18 +41,31 @@ if kind == 'terraform':
         if mode == 'app_state_failure':
             shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
             if sum(c[0] == 'terraform' and 'show' in c for c in shows) >= 4: sys.exit(2)
+        if mode == 'platform_state_failure':
+            shows = [json.loads(line) for line in Path(os.environ['TEST_TRACE']).read_text().splitlines()]
+            if sum(c[0] == 'terraform' and 'show' in c for c in shows) >= 5: sys.exit(2)
         groups = [] if mode == 'orphan' else [{'type':'aws_eks_node_group','values':{'cluster_name':'dev-eks','node_group_name':'dev-eks-general'}}]
-        if mode not in ['storage_untracked', 'absent_cluster', 'absent_cluster_with_ingress', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app']:
+        if mode not in ['storage_untracked', 'absent_cluster', 'absent_cluster_with_ingress', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app', 'absent_cluster_with_platform']:
             groups.append({'type':'helm_release', 'address':'module.eks_storage.helm_release.storage_classes'})
-        if mode not in ['ingress_untracked', 'absent_cluster', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app']:
+        if mode not in ['ingress_untracked', 'absent_cluster', 'absent_cluster_with_aws_lb', 'absent_cluster_with_app', 'absent_cluster_with_platform']:
             groups.append({'mode':'managed', 'type':'aws_iam_role', 'address':'module.eks_ingress.aws_iam_role.controller'})
             if mode != 'ingress_iam_only':
                 groups.append({'mode':'managed', 'type':'helm_release', 'address':'module.eks_ingress.helm_release.aws_load_balancer_controller'})
         if mode in ['app_tracked', 'app_destroy_failure', 'absent_cluster_with_app']:
             groups.append({'mode':'managed', 'type':'kubernetes_namespace',
                            'address':'module.app.kubernetes_namespace.environment["dev"]'})
+        if mode in ['platform_tracked', 'platform_partial', 'platform_destroy_failure',
+                    'platform_lb_pending', 'absent_cluster_with_platform']:
+            groups.append({'mode':'managed', 'type':'kubernetes_namespace',
+                           'address':'module.eks_platform.kubernetes_namespace.component["argocd"]'})
+            if mode != 'platform_partial':
+                groups.append({'mode':'managed', 'type':'kubernetes_ingress_v1',
+                               'address':'module.eks_platform.kubernetes_ingress_v1.argocd[0]'})
         groups.append({'type':'aws_efs_file_system', 'address':'module.eks_efs.aws_efs_file_system.this', 'values':{'id':'fs-0123456789abcdef0'}})
         print(json.dumps({'values':{'root_module':{'child_modules':[{'resources':groups}]}}}))
+    elif 'destroy' in args and '-target=module.eks_platform' in args:
+        if mode == 'platform_destroy_failure': sys.exit(2)
+        platform_deleted.touch()
     elif 'destroy' in args and '-target=module.app' in args:
         if mode == 'app_destroy_failure': sys.exit(2)
     elif 'destroy' in args and '-target=module.eks_ingress' in args:
@@ -63,6 +77,8 @@ if kind == 'terraform':
     elif 'destroy' in args and '-target=module.eks.aws_eks_node_group.this' in args:
         if mode == 'terraform_failure': sys.exit(2)
         marker.touch()
+    elif 'apply' in args and mode == 'platform_apply_failure' and '-target=module.eks_platform' in args:
+        sys.exit(2)
     elif 'apply' in args and mode == 'app_apply_failure' and '-target=module.app' in args:
         sys.exit(2)
     elif 'apply' in args and mode == 'ingress_apply_failure' and '-target=module.eks_ingress' in args:
@@ -82,6 +98,8 @@ elif kind == 'kubectl':
             if mode == 'ingress_query_failure': sys.exit(2)
             if mode == 'ingress_invalid_json': print('{}'); sys.exit(0)
             items = []
+            if mode == 'platform_tracked' and not platform_deleted.exists():
+                items = [{'kind':'Ingress','metadata':{'namespace':'argocd','name':'argocd'}}]
             if mode == 'remaining_ingress':
                 items = [{'kind':'Ingress','metadata':{'namespace':'app','name':'web'}}]
             if mode == 'remaining_lb_service':
@@ -105,7 +123,7 @@ elif kind == 'aws':
         assert '--no-paginate' not in args
         if mode == 'ingress_aws_failure': sys.exit(254)
         if mode == 'ingress_aws_invalid_json': print('{}'); sys.exit(0)
-        remaining = ['arn:aws:elasticloadbalancing:ap-southeast-1:123456789012:loadbalancer/app/web/fixture'] if mode in ['remaining_aws_lb', 'absent_cluster_with_aws_lb'] else []
+        remaining = ['arn:aws:elasticloadbalancing:ap-southeast-1:123456789012:loadbalancer/app/web/fixture'] if mode in ['remaining_aws_lb', 'absent_cluster_with_aws_lb', 'platform_lb_pending'] else []
         print(json.dumps(remaining))
     elif args[:2] == ['eks','describe-cluster']:
         if mode == 'cluster_lookup_failure': sys.exit(254)
@@ -241,7 +259,7 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_destroy.sh','terraform_failure')
         self.assertNotEqual(result.returncode,0)
         self.assertEqual(self.destroys(calls),['-target=module.eks_ingress', '-target=module.eks_storage', '-target=module.eks_efs', '-target=module.eks.aws_eks_node_group.this'])
-        self.assertNotIn('[PASS] STEP 6',result.stdout)
+        self.assertNotIn('[PASS] STEP 7',result.stdout)
 
     def test_access_denied_is_not_treated_as_missing_cluster(self):
         result,calls = self.run_script('run_infra_destroy.sh','access_denied')
@@ -308,12 +326,52 @@ class LifecycleTests(unittest.TestCase):
         self.assertTrue(any('apply' in c for c in calls if c[0]=='terraform'))
         targets = [next(arg for arg in c if arg.startswith('-target='))
                    for c in calls if c[0] == 'terraform' and 'apply' in c]
-        self.assertEqual(targets, ['-target=module.eks', '-target=module.eks_storage', '-target=module.eks_ingress', '-target=module.app'])
+        self.assertEqual(targets, [
+            '-target=module.eks', '-target=module.eks_storage', '-target=module.eks_ingress',
+            '-target=module.app', '-target=module.eks_platform',
+        ])
         update = next(i for i, c in enumerate(calls) if c[:3] == ['aws', 'eks', 'update-kubeconfig'])
         storage = next(i for i, c in enumerate(calls) if 'apply' in c and '-target=module.eks_storage' in c)
         self.assertLess(update, storage)
         ingress = next(i for i,c in enumerate(calls) if 'apply' in c and '-target=module.eks_ingress' in c)
         self.assertLess(storage, ingress)
+
+    def test_platform_apply_failure_stops_without_rollback_or_completion(self):
+        result, calls = self.run_script('run_infra_create.sh', 'platform_apply_failure')
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('Platform apply failed', result.stderr)
+        self.assertNotIn('CREATE COMPLETED', result.stdout)
+        self.assertEqual(self.destroys(calls), [])
+
+    def test_destroy_platform_before_ingress_inventory_and_controller(self):
+        for mode in ['platform_tracked', 'platform_partial']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(self.destroys(calls)[:2], ['-target=module.eks_platform', '-target=module.eks_ingress'])
+                kubeconfig = next(i for i, call in enumerate(calls) if call[:3] == ['aws', 'eks', 'update-kubeconfig'])
+                platform = next(i for i, call in enumerate(calls) if '-target=module.eks_platform' in call)
+                inventory = next(i for i, call in enumerate(calls) if call[:2] == ['aws', 'resourcegroupstaggingapi'])
+                controller = next(i for i, call in enumerate(calls) if '-target=module.eks_ingress' in call)
+                self.assertLess(kubeconfig, platform)
+                self.assertLess(platform, inventory)
+                self.assertLess(inventory, controller)
+
+    def test_platform_destroy_failure_or_pending_alb_preserves_controller_and_cluster(self):
+        for mode in ['platform_destroy_failure', 'platform_lb_pending']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.destroys(calls), ['-target=module.eks_platform'])
+                self.assertNotIn('DESTROY COMPLETED', result.stdout)
+
+    def test_platform_state_failure_or_absent_cluster_stops_teardown(self):
+        for mode in ['platform_state_failure', 'absent_cluster_with_platform']:
+            with self.subTest(mode=mode):
+                result, calls = self.run_script('run_infra_destroy.sh', mode)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.destroys(calls), [])
+                self.assertNotIn('DESTROY COMPLETED', result.stdout)
 
     def test_storage_apply_failure_stops_without_rollback_or_completion(self):
         result, calls = self.run_script('run_infra_create.sh', 'storage_apply_failure')
@@ -415,14 +473,14 @@ class LifecycleTests(unittest.TestCase):
         result,calls = self.run_script('run_infra_create.sh', auto_approve=None)
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 4)
+        self.assertEqual(len(applies), 5)
         self.assertTrue(all('-auto-approve' not in c for c in applies))
 
     def test_create_auto_approve_option(self):
         result,calls = self.run_script('run_infra_create.sh')
         self.assertEqual(result.returncode,0,result.stderr)
         applies = [c for c in calls if c[0]=='terraform' and 'apply' in c]
-        self.assertEqual(len(applies), 4)
+        self.assertEqual(len(applies), 5)
         self.assertTrue(all('-auto-approve' in c for c in applies))
 
     def test_invalid_auto_approve_fails_before_cloud_calls(self):

@@ -141,7 +141,7 @@ load_ingress_state() {
         if length > 0 then "true" else "false" end')" || return $?
 }
 
-# Read-only gate: application cleanup must complete while the Controller works.
+# Read-only gate: platform and application ingress cleanup must complete while the Controller works.
 # No workload deletion, AWS resource deletion, retry or finalizer stripping here.
 assert_ingress_cleanup_complete() {
     local resources remaining api_resources aws_resources
@@ -205,5 +205,15 @@ load_app_state() {
     APP_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
         [.. | objects | select(.mode? == "managed") |
           select((.address? // "") | startswith("module.app."))] |
+        if length > 0 then "true" else "false" end')" || return $?
+}
+
+# Include partial platform applies such as a namespace without its Helm release.
+load_platform_state() {
+    local state
+    state="$(terraform -chdir="$TF_DIR" show -json)" || return $?
+    PLATFORM_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        [.. | objects | select(.mode? == "managed") |
+          select((.address? // "") | startswith("module.eks_platform."))] |
         if length > 0 then "true" else "false" end')" || return $?
 }

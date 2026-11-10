@@ -10,14 +10,15 @@ set -Eeuo pipefail
 #   TF_AUTO_APPROVE=true ./script/run_infra_destroy.sh
 #
 # Destroy order:
-#   1. Verify ingress cleanup, then remove the Controller and its dedicated IRSA
-#   2. Disposable ebs-sc/efs-sc PVs and PVCs, using normal CSI reclamation
-#   3. Tracked application namespaces and ALL resources inside them
-#   4. Tracked Helm StorageClasses while the EKS API is still available
-#   5. EFS file system, mount targets and their security group (ALL DATA LOST)
-#   6. EKS node group, then wait for AWS deletion confirmation
-#   7. EKS control plane and IAM resources
-#   8. NAT EC2 module resources (also when nat_instance_enable=false)
+#   1. Tracked platform components and their Terraform-managed Ingress/DNS
+#   2. Verify ingress cleanup, then remove the Controller and its dedicated IRSA
+#   3. Disposable ebs-sc/efs-sc PVs and PVCs, using normal CSI reclamation
+#   4. Tracked application namespaces and ALL resources inside them
+#   5. Tracked Helm StorageClasses while the EKS API is still available
+#   6. EFS file system, mount targets and their security group (ALL DATA LOST)
+#   7. EKS node group, then wait for AWS deletion confirmation
+#   8. EKS control plane and IAM resources
+#   9. NAT EC2 module resources (also when nat_instance_enable=false)
 # ============================================================
 
 # ------------------------------------------------------------
@@ -99,7 +100,7 @@ run_destroy() {
     local step="$1"
     local target="$2"
 
-    run_step "${step}/8 - Destroy ${target}" \
+    run_step "${step}/9 - Destroy ${target}" \
         terraform -chdir="$TF_DIR" destroy \
         -target="$target" \
         -var-file="$TF_VAR_FILE" \
@@ -138,6 +139,7 @@ assert_nodegroups_tracked
 load_storage_state
 load_ingress_state
 load_app_state
+load_platform_state
 check_cluster_presence
 echo "AWS region         : ${EKS_REGION}"
 echo "EKS cluster        : ${EKS_CLUSTER_NAME}"
@@ -152,23 +154,27 @@ print_nat_status "destroy"
 
 log "DESTROY WARNING"
 echo "The following Terraform targets will be destroyed:"
-echo "  1. module.eks_ingress (Controller, dedicated IAM policy/role; if tracked)"
-echo "  2. PVs/PVCs using ebs-sc or efs-sc in all namespaces (CSI Delete policy required)"
-echo "  3. module.app (tracked dev/uat/preprod/prod namespaces and ALL contained resources)"
-echo "  4. module.eks_storage (tracked Helm StorageClasses; skipped if not tracked)"
-echo "  5. module.eks_efs (file system, mount targets, security group and ALL EFS DATA)"
-echo "  6. module.eks.aws_eks_node_group.this and its dependents"
-echo "  7. module.eks (control plane, IAM resources and cluster-specific NFS ingress)"
-echo "  8. module.ec2_nat_instance (tracked EC2, EIP, ENI, IAM and private default routes)"
+echo "  1. module.eks_platform (tracked components, namespaces, Ingress and DNS)"
+echo "  2. module.eks_ingress (Controller, dedicated IAM policy/role; if tracked)"
+echo "  3. PVs/PVCs using ebs-sc or efs-sc in all namespaces (CSI Delete policy required)"
+echo "  4. module.app (tracked dev/uat/preprod/prod namespaces and ALL contained resources)"
+echo "  5. module.eks_storage (tracked Helm StorageClasses; skipped if not tracked)"
+echo "  6. module.eks_efs (file system, mount targets, security group and ALL EFS DATA)"
+echo "  7. module.eks.aws_eks_node_group.this and its dependents"
+echo "  8. module.eks (control plane, IAM resources and cluster-specific NFS ingress)"
+echo "  9. module.ec2_nat_instance (tracked EC2, EIP, ENI, IAM and private default routes)"
 echo "     nat_instance_enable=${NAT_INSTANCE_ENABLE}; this setting does not skip existing NAT cleanup."
 echo
 echo "VPC, Internet Gateway, subnets, budget and S3 Gateway endpoint are retained."
 echo "EFS, selected PVC data and all resources inside app namespaces will be permanently deleted. No backup is created."
+echo "Deleting tracked platform namespaces also deletes their contents."
 echo "Review other PVCs/backing storage in these namespaces before namespace deletion."
 echo "Stop workload controllers and Pods using these claims before continuing."
 echo "In-use volumes, Retain policies, API errors and deletion timeouts stop cleanup."
 echo "Other StorageClasses are excluded; review their volumes and backing storage separately."
-echo "Remove application Ingresses, LoadBalancer Services and TargetGroupBindings first."
+echo "Prepare Argo CD Applications and workloads for teardown before deleting platform namespaces."
+echo "Remove remaining application Ingresses, LoadBalancer Services and TargetGroupBindings before Controller teardown."
+echo "The platform is removed before the ingress inventory check so the Controller can clean up its ALB."
 echo "Remaining resources or failed Kubernetes/AWS inventory checks stop cleanup."
 echo "Review untagged load balancers, residual security groups and persistent data separately."
 echo "This operation is DESTRUCTIVE."
@@ -185,56 +191,63 @@ fi
 # ------------------------------------------------------------
 
 if [[ "$EKS_CLUSTER_PRESENT" == "true" ]]; then
-    log "Configure Local kubeconfig for Ingress and Storage Cleanup"
+    log "Configure Local kubeconfig for Platform, Ingress and Storage Cleanup"
     if ! configure_kubeconfig; then
-        error "Cannot prepare kubeconfig for ingress/storage cleanup. No destroy step has run. Restore cluster access or review explicit recovery; this script does not remove Terraform state."
+        error "Cannot prepare kubeconfig for platform/ingress/storage cleanup. No destroy step has run. Restore cluster access or review explicit recovery; this script does not remove Terraform state."
     fi
-elif [[ "$STORAGE_RELEASE_TRACKED" == "true" || "$INGRESS_MODULE_TRACKED" == "true" || "$APP_MODULE_TRACKED" == "true" ]]; then
-    error "Cluster is absent with tracked app/ingress/storage resources. No destroy step has run. Review explicit recovery; this script does not remove Terraform state."
+elif [[ "$STORAGE_RELEASE_TRACKED" == "true" || "$INGRESS_MODULE_TRACKED" == "true" ||
+        "$APP_MODULE_TRACKED" == "true" || "$PLATFORM_MODULE_TRACKED" == "true" ]]; then
+    error "Cluster is absent with tracked app/platform/ingress/storage resources. No destroy step has run. Review explicit recovery; this script does not remove Terraform state."
+fi
+
+if [[ "$PLATFORM_MODULE_TRACKED" == "true" ]]; then
+    run_destroy "1" "module.eks_platform"
+else
+    log "STEP 1/9 - Platform module not tracked; skipping platform teardown"
 fi
 
 log "Ingress Cleanup Check"
 if ! assert_ingress_cleanup_complete; then
-    error "Ingress cleanup is incomplete or could not be verified. No destroy step has run; Controller, storage, EKS and NAT cleanup stopped."
+    error "Ingress cleanup is incomplete or could not be verified. Controller and later teardown stopped. Wait for any platform ALB/target group cleanup and resolve remaining ingress resources before rerunning."
 fi
 
 if [[ "$INGRESS_MODULE_TRACKED" == "true" ]]; then
-    run_destroy "1" "module.eks_ingress"
+    run_destroy "2" "module.eks_ingress"
 else
-    log "STEP 1/8 - Ingress module not tracked; skipping Controller uninstall"
+    log "STEP 2/9 - Ingress module not tracked; skipping Controller uninstall"
 fi
 
 if [[ "$EKS_CLUSTER_PRESENT" == "true" ]]; then
-    run_step "2/8 - Clean Disposable PVs and PVCs" \
+    run_step "3/9 - Clean Disposable PVs and PVCs" \
         python3 "${SCRIPT_DIR}/cleanup_eks_storage.py" \
         --kubeconfig "$KUBECONFIG_FILE" --context "$EKS_CLUSTER_NAME" \
         --efs-file-system-id "$EFS_FILE_SYSTEM_ID"
 else
-    log "STEP 2/8 - Cluster absent; Kubernetes cleanup unavailable"
+    log "STEP 3/9 - Cluster absent; Kubernetes cleanup unavailable"
     echo "Check orphaned EBS volumes separately; no cluster-side cleanup can be verified."
 fi
 
 if [[ "$APP_MODULE_TRACKED" == "true" ]]; then
-    run_destroy "3" "module.app"
+    run_destroy "4" "module.app"
 else
-    log "STEP 3/8 - App module not tracked; skipping namespace deletion"
+    log "STEP 4/9 - App module not tracked; skipping namespace deletion"
 fi
 
 if [[ "$STORAGE_RELEASE_TRACKED" == "true" ]]; then
-    run_destroy "4" "module.eks_storage"
+    run_destroy "5" "module.eks_storage"
 else
-    log "STEP 4/8 - StorageClasses not tracked; skipping Helm uninstall"
+    log "STEP 5/9 - StorageClasses not tracked; skipping Helm uninstall"
 fi
 
-run_destroy "5" "module.eks_efs"
-run_destroy "6" "module.eks.aws_eks_node_group.this"
+run_destroy "6" "module.eks_efs"
+run_destroy "7" "module.eks.aws_eks_node_group.this"
 
 log "Wait for AWS Node Group Deletion"
 # A waiter/query failure stops execution before cluster roles or NAT are removed.
 wait_for_nodegroups_deleted
 
-run_destroy "7" "module.eks"
-run_destroy "8" "module.ec2_nat_instance"
+run_destroy "8" "module.eks"
+run_destroy "9" "module.ec2_nat_instance"
 
 # ------------------------------------------------------------
 # Final State
@@ -250,4 +263,4 @@ else
 fi
 
 log "DESTROY COMPLETED"
-echo "Application namespaces, Ingress Controller, disposable storage, EFS, StorageClass, EKS and NAT cleanup completed."
+echo "Platform components, application namespaces, Ingress Controller, disposable storage, EFS, StorageClass, EKS and NAT cleanup completed."
