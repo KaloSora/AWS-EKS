@@ -72,6 +72,22 @@ validate_boolean() {
     esac
 }
 
+print_platform_access() {
+    local outputs namespace url
+    outputs="$(terraform -chdir="$TF_DIR" output -json)" || return $?
+    namespace="$(jq -r '.eks_platform_releases.value.argocd.namespace // empty' <<< "$outputs")" || return $?
+    [[ -n "$namespace" ]] || return 0
+    url="$(jq -r '.argocd_url.value // "Public Ingress disabled"' <<< "$outputs")" || return $?
+
+    echo
+    echo "Argo CD"
+    printf '  URL             : %s\n' "$url"
+    echo "  Username        : admin"
+    echo "  Initial password (run with an authorized AWS session):"
+    printf "    kubectl --kubeconfig %q --context %q -n %q get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && %s\n" \
+        "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME" "$namespace" "printf '\n'"
+}
+
 pre_check() {
     local command_name
     for command_name in terraform aws jq; do
@@ -215,6 +231,7 @@ terraform -chdir="$TF_DIR" state list
 
 log "Terraform Outputs"
 terraform -chdir="$TF_DIR" output
+print_platform_access
 
 log "CREATE COMPLETED"
 echo "EKS, EFS dependencies, StorageClasses, AWS Load Balancer Controller, application namespaces and enabled platform components have been deployed."
