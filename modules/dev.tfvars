@@ -91,8 +91,8 @@ eks_components = {
     config = {
       replicas             = "1"
       ec2_node_class_name  = "default"
-      provisioning_enabled = "false" # Opt in after reviewing the AMI and capacity limit.
-      ami_alias            = ""      # Set a pinned AL2023 alias before enabling provisioning.
+      provisioning_enabled = "true" # Opt in after reviewing the AMI and capacity limit.
+      ami_alias            = "al2023@v20260917"
       node_pool_cpu_limit  = "2"     # Total vCPU for this pool, separate from the managed node group.
     }
   }
