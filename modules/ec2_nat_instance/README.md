@@ -55,6 +55,12 @@ NAT_INSTANCE_ID="$(terraform -chdir=modules output -raw nat_instance_id)"
 aws ssm start-session --region ap-southeast-1 --target "$NAT_INSTANCE_ID"
 ```
 
+The ENI owns the source/destination check and must report `false`. The NAT
+instance ignores only its duplicate `source_dest_check` attribute to prevent
+the AWS provider from writing its default `true` back to the primary ENI.
+Terraform still detects and corrects drift on the ENI itself.
+See [AWS provider issue #44768](https://github.com/hashicorp/terraform-provider-aws/issues/44768).
+
 Session Manager requires the AWS CLI Session Manager plugin. Allow time for the agent to register. Inside the NAT instance:
 
 ```bash

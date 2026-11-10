@@ -100,6 +100,13 @@ resource "aws_instance" "this" {
     network_interface_id = aws_network_interface.this.id
   }
 
+  lifecycle {
+    # The provider can plan the default true on the instance and write it back
+    # to the primary ENI. Keep aws_network_interface as the owner of the flag.
+    # https://github.com/hashicorp/terraform-provider-aws/issues/44768
+    ignore_changes = [source_dest_check]
+  }
+
   metadata_options {
     http_endpoint               = "enabled"
     http_tokens                 = "required"
