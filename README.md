@@ -6,7 +6,7 @@ This section describes the platform tools to introduce incrementally on this
 standard EKS cluster. It is a roadmap, not a list of deployed services. Existing
 Terraform configuration covers VPC CNI/CoreDNS/kube-proxy, the AWS Load Balancer
 Controller, optional EBS/EFS CSI add-ons and StorageClasses. Configuration alone
-is not evidence of a successful deployment. Argo CD is configured through `modules/eks_platform` using a pinned Helm chart.
+is not evidence of a successful deployment. Argo CD is configured through `modules/eks_cicd`, and Karpenter is configured separately through `modules/karpenter`.
 Application repositories and automated delivery workflows are not bootstrapped.
 
 | Layer | Tools | Purpose | Implement status |
@@ -22,7 +22,7 @@ Application repositories and automated delivery workflows are not bootstrapped.
 | Workload identity and secrets | IRSA / EKS Pod Identity; [External Secrets Operator](https://external-secrets.io/latest/provider/aws-secrets-manager/) + AWS Secrets Manager; HashiCorp Vault | Workload identity grants scoped AWS access. External Secrets synchronizes external values into Kubernetes Secrets. Vault offers additional secret lifecycle and dynamic-credential capabilities. | ✅ |
 | Persistent storage | [Amazon EBS CSI Driver](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html) / [Amazon EFS CSI Driver](https://docs.aws.amazon.com/eks/latest/userguide/efs-csi.html) | EBS provides block volumes, typically for single-node writers; EFS provides shared NFS storage for multiple Pods/nodes. CSI drivers integrate these services with PVC provisioning and mounts. | ✅ |
 | Pod autoscaling | [Metrics Server](https://kubernetes-sigs.github.io/metrics-server/) + HPA; optional [KEDA](https://keda.sh/docs/latest/concepts/) | Metrics Server supplies resource metrics; HPA changes Pod replica counts; KEDA adds event-driven scaling. | ❌ |
-| Node autoscaling | [Karpenter](https://karpenter.sh/docs/) or Cluster Autoscaler | Karpenter provisions suitable EC2 capacity for pending Pods and consolidates nodes; Cluster Autoscaler adjusts configured node groups. | ❌ |
+| Node autoscaling | [Karpenter](https://karpenter.sh/docs/) or Cluster Autoscaler | Karpenter provisions suitable EC2 capacity for pending Pods and consolidates nodes; Cluster Autoscaler adjusts configured node groups. | Karpenter configured |
 | Policy and supply-chain security | [Kyverno](https://kyverno.io/docs/introduction/) + [Trivy](https://trivy.dev/docs/latest/guide/) | Kyverno validates or mutates Kubernetes resources and can enforce image policies. Trivy scans images and configuration for vulnerabilities, misconfiguration and exposed secrets. | ❌ |
 | Backup and recovery | [Velero](https://velero.io/docs/) / [AWS Backup](https://docs.aws.amazon.com/aws-backup/latest/devguide/eks-backups.html) | Protect Kubernetes resource definitions and supported persistent data through the selected backup integrations. | ❌ |
 | Infrastructure self-service | [Crossplane](https://docs.crossplane.io/latest/) | Exposes platform APIs and continuously reconciles infrastructure through providers and compositions. | ❌ |
@@ -69,7 +69,8 @@ control is needed, with key and API costs reviewed separately.
 | 10 | `terraform apply -target=module.eks_storage -var-file="dev.tfvars"` | Create AWS Storage for EFS and EBS |
 | 11 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
 | 12 | `terraform apply -target=module.app -var-file="dev.tfvars"` | Create application namespace |
-| 13 | `terraform apply -target=module.eks_platform -var-file="dev.tfvars"` | Install enabled platform components, including Argo CD |
+| 13 | `terraform apply -target=module.karpenter -var-file="dev.tfvars"` | Install Karpenter and its configured node provisioning |
+| 14 | `terraform apply -target=module.eks_cicd -var-file="dev.tfvars"` | Install Argo CD and its configured ingress |
 
 ## Reference
 [Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)

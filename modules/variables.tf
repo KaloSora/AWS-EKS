@@ -173,7 +173,7 @@ variable "eks_efs_throughput_mode" {
 }
 
 variable "eks_components" {
-  description = "EKS platform component inventory consumed by the generic Helm component module"
+  description = "EKS component inventory for the Karpenter and CI/CD modules"
   sensitive   = true
 
   type = map(object({
@@ -190,6 +190,15 @@ variable "eks_components" {
     value_templates = list(string)
     config          = map(string)
   }))
+
+  validation {
+    condition = length(distinct([
+      for component in values(var.eks_components) : component.namespace if component.enabled
+    ])) == length([
+      for component in values(var.eks_components) : component.namespace if component.enabled
+    ])
+    error_message = "Enabled EKS components must use unique namespaces."
+  }
 }
 
 variable "eks_ingress_chart_version" {

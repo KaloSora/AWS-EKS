@@ -1,8 +1,8 @@
 locals {
-  karpenter_enabled         = contains(local.enabled_component_names, "karpenter")
+  karpenter_enabled         = try(nonsensitive(var.component.enabled), false)
   karpenter_service_account = "karpenter"
-  karpenter_cluster_arn     = try(split(":", var.karpenter_cluster.arn), [])
-  karpenter_oidc_arn        = try(var.karpenter_cluster.oidc_provider_arn, null)
+  karpenter_cluster_arn     = try(split(":", var.cluster.arn), [])
+  karpenter_oidc_arn        = try(var.cluster.oidc_provider_arn, null)
   karpenter_oidc_host       = try(split(":oidc-provider/", local.karpenter_oidc_arn)[1], "")
 }
 
@@ -23,7 +23,7 @@ resource "aws_iam_role" "karpenter_controller" {
       Condition = {
         StringEquals = {
           "${local.karpenter_oidc_host}:aud" = "sts.amazonaws.com"
-          "${local.karpenter_oidc_host}:sub" = "system:serviceaccount:${nonsensitive(var.components["karpenter"].namespace)}:${local.karpenter_service_account}"
+          "${local.karpenter_oidc_host}:sub" = "system:serviceaccount:${nonsensitive(var.component.namespace)}:${local.karpenter_service_account}"
         }
       }
     }]
@@ -64,7 +64,7 @@ resource "aws_iam_role_policy_attachment" "karpenter_node" {
 
 resource "aws_eks_access_entry" "karpenter_node" {
   count         = local.karpenter_enabled ? 1 : 0
-  cluster_name  = var.karpenter_cluster.name
+  cluster_name  = var.cluster.name
   principal_arn = aws_iam_role.karpenter_node[0].arn
   type          = "EC2_LINUX"
 
@@ -82,7 +82,7 @@ resource "aws_iam_role_policy" "karpenter_controller" {
     partition     = local.karpenter_cluster_arn[1]
     region        = local.karpenter_cluster_arn[3]
     account_id    = local.karpenter_cluster_arn[4]
-    cluster_name  = var.karpenter_cluster.name
+    cluster_name  = var.cluster.name
     node_role_arn = aws_iam_role.karpenter_node[0].arn
   })
 }

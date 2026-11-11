@@ -16,7 +16,8 @@ set -Eeuo pipefail
 #   4. Create module.eks_storage and its EFS dependencies
 #   5. Create module.eks_ingress (Controller, dedicated IRSA)
 #   6. Create module.app namespaces
-#   7. Create module.eks_platform; print access examples
+#   7. Create module.karpenter
+#   8. Create module.eks_cicd (Argo CD); print access examples
 # ============================================================
 
 # ------------------------------------------------------------
@@ -29,7 +30,7 @@ TF_DIR="${PROJECT_ROOT}/modules"
 KUBECONFIG_FILE="${TF_DIR}/eks_kubeconfig/config"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
-TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"
+TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-false}"
 
 # ------------------------------------------------------------
 # Functions
@@ -72,7 +73,7 @@ validate_boolean() {
     esac
 }
 
-print_platform_access() {
+print_argocd_access() {
     local outputs namespace url
     outputs="$(terraform -chdir="$TF_DIR" output -json)" || return $?
     namespace="$(jq -r '.eks_platform_releases.value.argocd.namespace // empty' <<< "$outputs")" || return $?
@@ -154,11 +155,11 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "1/6 - Create EKS and Required Dependencies" "$@"; then
+if ! run_step "1/7 - Create EKS and Required Dependencies" "$@"; then
     error "EKS apply failed. Preserve state/recovery files and inspect AWS node groups before retrying or destroying IAM roles."
 fi
 
-if ! run_step "2/6 - Configure Local kubeconfig" configure_kubeconfig; then
+if ! run_step "2/7 - Configure Local kubeconfig" configure_kubeconfig; then
     error "EKS apply completed, but local kubeconfig setup failed. Check the local path and AWS permissions; infrastructure has not been rolled back."
 fi
 
@@ -173,7 +174,7 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "3/6 - Create StorageClasses and EFS Dependencies" "$@"; then
+if ! run_step "3/7 - Create StorageClasses and EFS Dependencies" "$@"; then
     error "Storage apply failed. EKS and any partially created EFS/Helm resources have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
@@ -188,7 +189,7 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "4/6 - Create AWS Load Balancer Controller" "$@"; then
+if ! run_step "4/7 - Create AWS Load Balancer Controller" "$@"; then
     error "Ingress Controller apply failed. Existing infrastructure and any partial IAM/Helm resources have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
@@ -203,23 +204,37 @@ if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "5/6 - Create Application Namespaces" "$@"; then
+if ! run_step "5/7 - Create Application Namespaces" "$@"; then
     error "Application namespace apply failed. Existing infrastructure and partially created namespaces have not been rolled back. Preserve recovery files and review state before retrying."
 fi
 
-log "Platform Configuration"
-echo "The platform target installs enabled components and may create an Argo CD ALB and DNS record."
-echo "Review dependency changes in the plan. An ALB incurs additional charges."
+log "Karpenter Configuration"
+echo "The Karpenter target installs its controller and, when enabled, dynamic node provisioning."
 assert_nodegroups_tracked
 set -- terraform -chdir="$TF_DIR" apply \
-    -target=module.eks_platform \
+    -target=module.karpenter \
     -var-file="$TF_VAR_FILE"
 if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
     set -- "$@" -auto-approve
 fi
 
-if ! run_step "6/6 - Create EKS Platform Components" "$@"; then
-    error "Platform apply failed. Existing infrastructure and any partial platform resources have not been rolled back. Preserve recovery files and review state before retrying."
+if ! run_step "6/7 - Create Karpenter" "$@"; then
+    error "Karpenter apply failed. Preserve recovery files and review state before retrying."
+fi
+
+log "CI/CD Configuration"
+echo "The CI/CD target installs Argo CD and may create its ALB and DNS record."
+echo "Review dependency changes in the plan. An ALB incurs additional charges."
+assert_nodegroups_tracked
+set -- terraform -chdir="$TF_DIR" apply \
+    -target=module.eks_cicd \
+    -var-file="$TF_VAR_FILE"
+if [[ "$TF_AUTO_APPROVE" == "true" ]]; then
+    set -- "$@" -auto-approve
+fi
+
+if ! run_step "7/7 - Create EKS CI/CD Components" "$@"; then
+    error "CI/CD apply failed. Preserve recovery files and review state before retrying."
 fi
 
 # ------------------------------------------------------------
@@ -231,10 +246,10 @@ terraform -chdir="$TF_DIR" state list
 
 log "Terraform Outputs"
 terraform -chdir="$TF_DIR" output
-print_platform_access
+print_argocd_access
 
 log "CREATE COMPLETED"
-echo "EKS, EFS dependencies, StorageClasses, AWS Load Balancer Controller, application namespaces and enabled platform components have been deployed."
+echo "EKS, EFS dependencies, StorageClasses, AWS Load Balancer Controller, application namespaces and enabled Karpenter and CI/CD components have been deployed."
 echo "Local kubeconfig   : ${KUBECONFIG_FILE} (permissions: 600)"
 echo "kubectl examples (requires a valid authorized AWS session):"
 printf '  kubectl --kubeconfig %q --context %q get nodes\n' "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME"

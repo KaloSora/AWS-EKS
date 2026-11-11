@@ -202,7 +202,7 @@ cleanup failures. Helm uninstall alone does not delete application Ingresses or
 prove their AWS resources are gone; chart CRDs can remain.
 
 The destroy script requires typing `destroy` once. It destroys any tracked
-`module.eks_platform` resources first so the Controller can clean up the Argo CD
+`module.eks_cicd` resources first so the Controller can clean up the Argo CD
 ALB and target groups. It then runs a read-only gate before uninstalling the
 Controller. The gate refuses remaining Ingresses (all classes),
 LoadBalancer Services and TargetGroupBindings. It discovers the TargetGroupBinding
@@ -217,7 +217,7 @@ application resources, strip finalizers, retry cleanup or modify Terraform state
 
 After the gate passes, tracked `module.eks_ingress` resources (including partial
 IAM-only applies) are destroyed before storage cleanup, nodes, EKS/OIDC and NAT.
-Uninstall failures stop later teardown. An absent cluster with tracked platform, ingress, app or
+Uninstall failures stop later teardown. An absent cluster with tracked CI/CD, Karpenter, ingress, app or
 storage resources requires explicit recovery; the script stops. Untagged AWS
 resources and residual security groups are outside the automatic inventory and
 must be reviewed separately. Stop workload/GitOps controllers that can recreate

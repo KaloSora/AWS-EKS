@@ -208,12 +208,14 @@ load_app_state() {
         if length > 0 then "true" else "false" end')" || return $?
 }
 
-# Include partial platform applies such as a namespace without its Helm release.
-load_platform_state() {
+# Include partial applies and fail closed if state cannot be read.
+load_component_state() {
     local state
     state="$(terraform -chdir="$TF_DIR" show -json)" || return $?
-    PLATFORM_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
-        [.. | objects | select(.mode? == "managed") |
-          select((.address? // "") | startswith("module.eks_platform."))] |
-        if length > 0 then "true" else "false" end')" || return $?
+    CICD_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        any(.. | objects | select(.mode? == "managed");
+          (.address? // "") | startswith("module.eks_cicd.")) | tostring')" || return $?
+    KARPENTER_MODULE_TRACKED="$(printf '%s\n' "$state" | jq -er '
+        any(.. | objects | select(.mode? == "managed");
+          (.address? // "") | startswith("module.karpenter.")) | tostring')" || return $?
 }

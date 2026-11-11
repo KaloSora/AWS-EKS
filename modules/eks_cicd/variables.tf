@@ -1,5 +1,5 @@
 variable "components" {
-  description = "Platform component inventory rendered through the generic Helm component module"
+  description = "CI/CD component inventory rendered through Helm"
   sensitive   = true
 
   type = map(object({
@@ -43,7 +43,7 @@ variable "components" {
       for component in values(var.components) : component.namespace
       if component.enabled
     ])
-    error_message = "Enabled platform components must use unique namespaces."
+    error_message = "Enabled CI/CD components must use unique namespaces."
   }
 
   validation {
@@ -53,48 +53,6 @@ variable "components" {
       component.timeout > 0 && component.timeout == floor(component.timeout)
     ])
     error_message = "Components must pin a chart version and use a positive integer timeout."
-  }
-
-  validation {
-    condition = try(var.components["karpenter"].enabled, false) ? try(
-      var.components["karpenter"].version == "1.15.1" &&
-      can(regex("^[1-9][0-9]*$", var.components["karpenter"].config["replicas"])) &&
-      can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.components["karpenter"].config["ec2_node_class_name"])),
-      false
-    ) : true
-    error_message = "Enabled Karpenter requires chart 1.15.1, which matches the bundled IAM policy, positive integer replicas and a valid ec2_node_class_name."
-  }
-
-  validation {
-    condition = try(var.components["karpenter"].enabled, false) ? (
-      contains(["true", "false"], try(var.components["karpenter"].config["provisioning_enabled"], "false")) &&
-      (try(var.components["karpenter"].config["provisioning_enabled"], "false") == "true" ? try(
-        can(regex("^al2023@v[0-9]{8}$", var.components["karpenter"].config["ami_alias"])) &&
-        can(regex("^[1-9][0-9]*$", var.components["karpenter"].config["node_pool_cpu_limit"])),
-        false
-      ) : true)
-    ) : true
-    error_message = "Karpenter provisioning_enabled must be true or false. Enabled provisioning requires a pinned al2023@vYYYYMMDD ami_alias and a positive integer node_pool_cpu_limit."
-  }
-}
-
-variable "karpenter_cluster" {
-  description = "Existing cluster and exact instance type allowlist used by Karpenter"
-  type = object({
-    name                    = string
-    arn                     = string
-    oidc_provider_arn       = string
-    endpoint                = string
-    managed_node_group_name = string
-    instance_types          = list(string)
-    private_subnet_ids      = optional(list(string), [])
-    node_security_group_id  = optional(string)
-  })
-  default = null
-
-  validation {
-    condition     = var.karpenter_cluster == null ? true : length(var.karpenter_cluster.instance_types) > 0
-    error_message = "Karpenter requires at least one explicitly allowed instance type."
   }
 }
 
