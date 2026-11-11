@@ -30,7 +30,7 @@ TF_DIR="${PROJECT_ROOT}/modules"
 KUBECONFIG_FILE="${TF_DIR}/eks_kubeconfig/config"
 TF_VAR_FILE="dev.tfvars"
 TF_BACKEND_CONFIG="dev.s3.tfbackend"
-TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-false}"
+TF_AUTO_APPROVE="${TF_AUTO_APPROVE:-true}"
 
 # ------------------------------------------------------------
 # Functions
