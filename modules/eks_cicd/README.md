@@ -13,6 +13,17 @@ uses an 8 GiB persistent volume on the EBS StorageClass passed to this module.
 The generated administrator credentials are stored in the `jenkins` Kubernetes
 Secret; Terraform does not set or output the password.
 
+Jenkins is configured with the `aws-eks-app` Multibranch Pipeline job. It scans
+`https://github.com/KaloSora/AWS-EKS-APP.git` for `JIRA-*` branches, excluding
+no branches, and reads each matching branch's `ci/jenkins/Jenkinsfile`. The
+GitHub repository must be publicly readable for this credential-free
+configuration; private repositories need a Jenkins credential configured
+separately. Branch indexing runs every 5 minutes. The Job DSL plugin creates
+the job through JCasC, and the chart
+initialization reruns on upgrades to install declared plugins. Plugin versions
+and dependency resolution are pinned to avoid opportunistic latest-version
+updates.
+
 When `eks_argocd_ingress_enabled` is true, Terraform creates a
 separate internet-facing HTTPS ALB Ingress for `jenkins.kalosora.live`, uses the
 configured ACM certificate, restricts inbound traffic to the configured

@@ -8,9 +8,36 @@ ${yamlencode({
     ingress = {
       enabled = false
     }
-    initializeOnce = true
+    # Re-run chart initialization so newly declared plugins are installed on upgrades.
+    initializeOnce       = false
+    installLatestPlugins = false
+    additionalPlugins    = ["job-dsl:3732.v9a_c49a_61a_313"]
     JCasC = {
       defaultConfig = true
+      configScripts = {
+        multibranch-pipeline = <<-EOT
+          jobs:
+            - script: |
+                multibranchPipelineJob('${jenkins_pipeline_job_name}') {
+                  branchSources {
+                    git {
+                      id = '${jenkins_pipeline_job_name}'
+                      remote('${jenkins_pipeline_repository_url}')
+                      includes('${jenkins_pipeline_branch_includes}')
+                      excludes('${jenkins_pipeline_branch_excludes}')
+                    }
+                  }
+                  factory {
+                    workflowBranchProjectFactory {
+                      scriptPath('${jenkins_pipeline_script_path}')
+                    }
+                  }
+                  triggers {
+                    periodic(${tonumber(trimsuffix(jenkins_pipeline_scan_interval, "m"))})
+                  }
+                }
+        EOT
+      }
     }
   }
   persistence = {

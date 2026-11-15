@@ -128,7 +128,13 @@ eks_components = {
     wait_for_jobs   = true
     value_templates = ["jenkins.yaml"]
     config = {
-      jenkins_url = "jenkins.kalosora.live"
+      jenkins_url                      = "jenkins.kalosora.live"
+      jenkins_pipeline_job_name        = "aws-eks-app"
+      jenkins_pipeline_repository_url  = "https://github.com/KaloSora/AWS-EKS-APP.git"
+      jenkins_pipeline_script_path     = "ci/jenkins/Jenkinsfile"
+      jenkins_pipeline_branch_includes = "JIRA-*"
+      jenkins_pipeline_branch_excludes = ""
+      jenkins_pipeline_scan_interval   = "5m"
     }
   }
 }
