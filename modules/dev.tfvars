@@ -114,7 +114,24 @@ eks_components = {
 
     }
   }
+
+  jenkins = {
+    enabled         = true
+    release_name    = "jenkins"
+    namespace       = "jenkins"
+    repository      = "https://charts.jenkins.io"
+    chart           = "jenkins"
+    version         = "5.11.0"
+    timeout         = 900
+    atomic          = true
+    wait            = true
+    wait_for_jobs   = true
+    value_templates = ["jenkins.yaml"]
+    config = {
+      jenkins_url = "jenkins.kalosora.live"
+    }
+  }
 }
 
-# Expose the Argo CD HTTPS ALB to the same CIDRs as the public EKS API.
+# Expose Argo CD and Jenkins through HTTPS ALBs restricted to the public EKS API CIDRs.
 eks_argocd_ingress_enabled = true

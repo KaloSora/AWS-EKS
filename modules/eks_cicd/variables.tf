@@ -66,8 +66,8 @@ variable "k8s_version" {
   type        = string
 }
 
-variable "argocd_ingress" {
-  description = "Optional ALB and Route 53 settings for the enabled Argo CD component"
+variable "public_ingress" {
+  description = "Optional ALB and Route 53 settings for enabled public CI/CD components"
   type = object({
     ingress_class    = string
     certificate_arn  = string
@@ -79,11 +79,11 @@ variable "argocd_ingress" {
   default = null
 
   validation {
-    condition = var.argocd_ingress == null ? true : (
-      length(var.argocd_ingress.inbound_cidrs) > 0 && alltrue([
-        for cidr in var.argocd_ingress.inbound_cidrs : try(cidrnetmask(cidr) != "0.0.0.0", false)
+    condition = var.public_ingress == null ? true : (
+      length(var.public_ingress.inbound_cidrs) > 0 && alltrue([
+        for cidr in var.public_ingress.inbound_cidrs : try(cidrnetmask(cidr) != "0.0.0.0", false)
       ])
     )
-    error_message = "An Argo CD ALB requires at least one trusted IPv4 CIDR and cannot allow 0.0.0.0/0."
+    error_message = "Public CI/CD ALBs require at least one trusted IPv4 CIDR and cannot allow 0.0.0.0/0."
   }
 }

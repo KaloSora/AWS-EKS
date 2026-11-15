@@ -1,0 +1,22 @@
+# Jenkins stores its generated admin password in a Kubernetes Secret.
+# The controller service stays private behind the Terraform-managed ALB Ingress.
+${yamlencode({
+  controller = {
+    jenkinsUrl = "https://${jenkins_url}"
+    serviceType = "ClusterIP"
+    agentListenerServiceType = "ClusterIP"
+    ingress = {
+      enabled = false
+    }
+    initializeOnce = true
+    JCasC = {
+      defaultConfig = true
+    }
+  }
+  persistence = {
+    enabled     = true
+    storageClass = storage_class
+    accessMode  = "ReadWriteOnce"
+    size        = "8Gi"
+  }
+})}

@@ -6,7 +6,7 @@ This section describes the platform tools to introduce incrementally on this
 standard EKS cluster. It is a roadmap, not a list of deployed services. Existing
 Terraform configuration covers VPC CNI/CoreDNS/kube-proxy, the AWS Load Balancer
 Controller, optional EBS/EFS CSI add-ons and StorageClasses. Configuration alone
-is not evidence of a successful deployment. Argo CD is configured through `modules/eks_cicd`, and Karpenter is configured separately through `modules/karpenter`.
+is not evidence of a successful deployment. Argo CD and Jenkins are configured through `modules/eks_cicd`, and Karpenter is configured separately through `modules/karpenter`.
 Application repositories and automated delivery workflows are not bootstrapped.
 
 | Layer | Tools | Purpose | Implement status |
@@ -70,7 +70,7 @@ control is needed, with key and API costs reviewed separately.
 | 11 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
 | 12 | `terraform apply -target=module.app -var-file="dev.tfvars"` | Create application namespace |
 | 13 | `terraform apply -target=module.karpenter -var-file="dev.tfvars"` | Install Karpenter and its configured node provisioning |
-| 14 | `terraform apply -target=module.eks_cicd -var-file="dev.tfvars"` | Install Argo CD and its configured ingress |
+| 14 | `terraform apply -target=module.eks_cicd -var-file="dev.tfvars"` | Install Argo CD, Jenkins, and their configured ingresses |
 
 ## Reference
 [Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)

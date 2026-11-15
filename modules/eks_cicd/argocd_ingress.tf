@@ -1,5 +1,5 @@
 locals {
-  argocd_ingress_enabled = var.argocd_ingress != null && contains(local.enabled_component_names, "argocd")
+  argocd_ingress_enabled = var.public_ingress != null && contains(local.enabled_component_names, "argocd")
   argocd_domain          = try(nonsensitive(var.components["argocd"].config["argocd_url"]), "")
 
   # Match the pinned chart's fullname and server fullname helpers.
@@ -21,10 +21,10 @@ resource "kubernetes_ingress_v1" "argocd" {
     annotations = {
       "alb.ingress.kubernetes.io/scheme"               = "internet-facing"
       "alb.ingress.kubernetes.io/target-type"          = "ip"
-      "alb.ingress.kubernetes.io/load-balancer-name"   = var.argocd_ingress.alb_name
+      "alb.ingress.kubernetes.io/load-balancer-name"   = var.public_ingress.alb_name
       "alb.ingress.kubernetes.io/listen-ports"         = jsonencode([{ HTTPS = 443 }])
-      "alb.ingress.kubernetes.io/certificate-arn"      = var.argocd_ingress.certificate_arn
-      "alb.ingress.kubernetes.io/inbound-cidrs"        = join(",", var.argocd_ingress.inbound_cidrs)
+      "alb.ingress.kubernetes.io/certificate-arn"      = var.public_ingress.certificate_arn
+      "alb.ingress.kubernetes.io/inbound-cidrs"        = join(",", var.public_ingress.inbound_cidrs)
       "alb.ingress.kubernetes.io/backend-protocol"     = "HTTPS"
       "alb.ingress.kubernetes.io/healthcheck-protocol" = "HTTPS"
       "alb.ingress.kubernetes.io/healthcheck-path"     = "/healthz"
@@ -32,7 +32,7 @@ resource "kubernetes_ingress_v1" "argocd" {
   }
 
   spec {
-    ingress_class_name = var.argocd_ingress.ingress_class
+    ingress_class_name = var.public_ingress.ingress_class
 
     rule {
       host = local.argocd_domain
@@ -58,7 +58,7 @@ resource "kubernetes_ingress_v1" "argocd" {
 
   lifecycle {
     precondition {
-      condition     = endswith(local.argocd_domain, ".${var.argocd_ingress.hosted_zone_name}")
+      condition     = endswith(local.argocd_domain, ".${var.public_ingress.hosted_zone_name}")
       error_message = "Argo CD's hostname must be a subdomain of the configured Route 53 hosted zone."
     }
   }
@@ -74,7 +74,7 @@ data "aws_lb" "argocd" {
 resource "aws_route53_record" "argocd" {
   count = local.argocd_ingress_enabled ? 1 : 0
 
-  zone_id = var.argocd_ingress.hosted_zone_id
+  zone_id = var.public_ingress.hosted_zone_id
   name    = local.argocd_domain
   type    = "A"
 

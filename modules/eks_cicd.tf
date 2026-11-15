@@ -12,7 +12,7 @@ module "eks_cicd" {
   storage_class_name = module.eks_storage.storage_class_names.ebs
   k8s_version        = var.eks_kubernetes_version
 
-  argocd_ingress = var.eks_argocd_ingress_enabled ? {
+  public_ingress = var.eks_argocd_ingress_enabled ? {
     ingress_class    = module.eks_ingress.ingress_class_name
     certificate_arn  = module.acm.certificate_arn
     hosted_zone_id   = module.route53.zone_id

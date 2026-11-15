@@ -176,7 +176,7 @@ echo "In-use volumes, Retain policies, API errors and deletion timeouts stop cle
 echo "Other StorageClasses are excluded; review their volumes and backing storage separately."
 echo "Prepare Argo CD Applications and workloads for teardown before deleting CI/CD namespaces."
 echo "Remove remaining application Ingresses, LoadBalancer Services and TargetGroupBindings before Controller teardown."
-echo "Argo CD is removed before the ingress inventory check so the Controller can clean up its ALB."
+echo "Argo CD and Jenkins are removed before the ingress inventory check so the Controller can clean up their ALBs."
 echo "Remaining resources or failed Kubernetes/AWS inventory checks stop cleanup."
 echo "Review untagged load balancers, residual security groups and persistent data separately."
 echo "This operation is DESTRUCTIVE."
@@ -210,7 +210,7 @@ fi
 
 log "Ingress Cleanup Check"
 if ! assert_ingress_cleanup_complete; then
-    error "Ingress cleanup is incomplete or could not be verified. Controller and later teardown stopped. Wait for the Argo CD ALB/target group cleanup and resolve remaining ingress resources before rerunning."
+    error "Ingress cleanup is incomplete or could not be verified. Controller and later teardown stopped. Wait for the CI/CD ALB/target group cleanup and resolve remaining ingress resources before rerunning."
 fi
 
 if [[ "$INGRESS_MODULE_TRACKED" == "true" ]]; then

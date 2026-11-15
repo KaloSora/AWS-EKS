@@ -17,7 +17,7 @@ set -Eeuo pipefail
 #   5. Create module.eks_ingress (Controller, dedicated IRSA)
 #   6. Create module.app namespaces
 #   7. Create module.karpenter
-#   8. Create module.eks_cicd (Argo CD); print access examples
+#   8. Create module.eks_cicd (Argo CD and Jenkins); print access examples
 # ============================================================
 
 # ------------------------------------------------------------
@@ -87,6 +87,18 @@ print_argocd_access() {
     echo "  Initial password (run with an authorized AWS session):"
     printf "    kubectl --kubeconfig %q --context %q -n %q get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d && %s\n" \
         "$KUBECONFIG_FILE" "$EKS_CLUSTER_NAME" "$namespace" "printf '\n'"
+}
+
+print_jenkins_access() {
+    local outputs namespace url
+    outputs="$(terraform -chdir="$TF_DIR" output -json)" || return $?
+    namespace="$(jq -r '.eks_platform_releases.value.jenkins.namespace // empty' <<< "$outputs")" || return $?
+    [[ -n "$namespace" ]] || return 0
+    url="$(jq -r '.jenkins_url.value // "Public Ingress disabled"' <<< "$outputs")" || return $?
+
+    echo
+    echo "Jenkins"
+    printf '  URL             : %s\n' "$url"
 }
 
 pre_check() {
@@ -223,8 +235,8 @@ if ! run_step "6/7 - Create Karpenter" "$@"; then
 fi
 
 log "CI/CD Configuration"
-echo "The CI/CD target installs Argo CD and may create its ALB and DNS record."
-echo "Review dependency changes in the plan. An ALB incurs additional charges."
+echo "The CI/CD target installs enabled Argo CD/Jenkins charts and may create their ALBs and DNS records."
+echo "Review dependency changes in the plan. Each public application ALB incurs additional charges."
 assert_nodegroups_tracked
 set -- terraform -chdir="$TF_DIR" apply \
     -target=module.eks_cicd \
@@ -247,6 +259,7 @@ terraform -chdir="$TF_DIR" state list
 log "Terraform Outputs"
 terraform -chdir="$TF_DIR" output
 print_argocd_access
+print_jenkins_access
 
 log "CREATE COMPLETED"
 echo "EKS, EFS dependencies, StorageClasses, AWS Load Balancer Controller, application namespaces and enabled Karpenter and CI/CD components have been deployed."

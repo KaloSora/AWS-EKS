@@ -13,3 +13,8 @@ output "argocd_url" {
   description = "HTTPS address published by the Argo CD Route 53 record"
   value       = local.argocd_ingress_enabled ? "https://${aws_route53_record.argocd[0].fqdn}" : null
 }
+
+output "jenkins_url" {
+  description = "HTTPS address published by the Jenkins Route 53 record"
+  value       = local.jenkins_ingress_enabled ? "https://${aws_route53_record.jenkins[0].fqdn}" : null
+}
