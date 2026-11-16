@@ -14,8 +14,8 @@ The generated administrator credentials are stored in the `jenkins` Kubernetes
 Secret; Terraform does not set or output the password.
 
 Jenkins is configured with the `aws-eks-app` Multibranch Pipeline job. It scans
-`https://github.com/KaloSora/AWS-EKS-APP.git` for `JIRA-*` branches, excluding
-no branches, and reads each matching branch's `ci/jenkins/Jenkinsfile`. The
+`https://github.com/KaloSora/AWS-EKS-APP.git` for all branches except `main`
+and reads each matching branch's `ci/jenkins/Jenkinsfile`. The
 GitHub repository must be publicly readable for this credential-free
 configuration; private repositories need a Jenkins credential configured
 separately. Branch indexing runs every 5 minutes. The Job DSL plugin creates
@@ -41,8 +41,9 @@ existing role must trust the cluster's OIDC provider with audience
 `system:serviceaccount:cicd-build:jenkins-ecr-publisher`, and its push
 permissions should be scoped to the intended ECR repository. IRSA is injected
 only into the Kaniko container. Use this job with trusted SCM branches.
-The pipeline publishes from `main`; include `main` in branch discovery when
-enabling release builds.
+The application Jenkinsfile runs ECR publication and GitOps updates only on
+`main`. With the development branch filter, this job runs branch verification
+builds only.
 
 ### GitOps credential
 
