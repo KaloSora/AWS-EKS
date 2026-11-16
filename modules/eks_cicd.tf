@@ -11,13 +11,29 @@ variable "jenkins_ecr_role_arn" {
   default     = null
 }
 
+variable "gitops_github_token" {
+  description = "GitHub token for the Jenkins GitOps credential"
+  type        = string
+  sensitive   = true
+  default     = null
+}
+
+variable "gitops_github_username" {
+  description = "GitHub username associated with the Jenkins GitOps token"
+  type        = string
+  default     = "KaloSora"
+  nullable    = false
+}
+
 module "eks_cicd" {
   source = "./eks_cicd"
 
-  components           = { for name, component in var.eks_components : name => component if name != "karpenter" }
-  storage_class_name   = module.eks_storage.storage_class_names.ebs
-  k8s_version          = var.eks_kubernetes_version
-  jenkins_ecr_role_arn = var.jenkins_ecr_role_arn
+  components             = { for name, component in var.eks_components : name => component if name != "karpenter" }
+  storage_class_name     = module.eks_storage.storage_class_names.ebs
+  k8s_version            = var.eks_kubernetes_version
+  jenkins_ecr_role_arn   = var.jenkins_ecr_role_arn
+  gitops_github_token    = var.gitops_github_token
+  gitops_github_username = var.gitops_github_username
 
   public_ingress = var.eks_argocd_ingress_enabled ? {
     ingress_class    = module.eks_ingress.ingress_class_name

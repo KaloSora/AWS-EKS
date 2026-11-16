@@ -15,6 +15,9 @@ locals {
         jenkins_agent_namespace       = kubernetes_service_account_v1.jenkins_agent[0].metadata[0].namespace
         jenkins_agent_service_account = kubernetes_service_account_v1.jenkins_agent[0].metadata[0].name
         jenkins_agent_pod_yaml        = file("${path.module}/pod_templates/aws-eks-app.yaml")
+        jenkins_gitops_secret_name    = one(kubernetes_secret_v1.jenkins_gitops[*].metadata[0].name)
+        jenkins_gitops_revision       = one(terraform_data.jenkins_gitops_revision[*].id)
+        jenkins_gitops_init_script    = file("${path.module}/jenkins_init/gitops-credential.groovy")
       } : {}
     )
   }

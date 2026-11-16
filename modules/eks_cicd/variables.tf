@@ -77,6 +77,30 @@ variable "jenkins_ecr_role_arn" {
   }
 }
 
+variable "gitops_github_token" {
+  description = "GitHub token for the Jenkins GitOps credential"
+  type        = string
+  sensitive   = true
+  default     = null
+
+  validation {
+    condition     = var.gitops_github_token == null ? true : can(regex("^[^[:space:]]+$", var.gitops_github_token))
+    error_message = "gitops_github_token must be nonempty and contain no whitespace when set."
+  }
+}
+
+variable "gitops_github_username" {
+  description = "GitHub username associated with the Jenkins GitOps token"
+  type        = string
+  default     = "KaloSora"
+  nullable    = false
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9]([A-Za-z0-9-]{0,37}[A-Za-z0-9])?$", var.gitops_github_username))
+    error_message = "gitops_github_username must be a GitHub username."
+  }
+}
+
 variable "public_ingress" {
   description = "Optional ALB and Route 53 settings for enabled public CI/CD components"
   type = object({

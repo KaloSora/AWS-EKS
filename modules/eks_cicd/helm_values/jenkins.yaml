@@ -12,6 +12,19 @@ ${yamlencode({
     initializeOnce       = false
     installLatestPlugins = false
     additionalPlugins    = ["job-dsl:3732.v9a_c49a_61a_313"]
+    additionalExistingSecrets = jenkins_gitops_secret_name == null ? [] : [
+      for key in ["username", "token"] : {
+        name    = jenkins_gitops_secret_name
+        keyName = key
+      }
+    ]
+    initScripts = jenkins_gitops_secret_name == null ? {} : {
+      gitops-credential = jenkins_gitops_init_script
+    }
+    # Restart the controller on rotation so the init hook reads the updated Secret.
+    podAnnotations = jenkins_gitops_secret_name == null ? {} : {
+      "ci.aws-eks/gitops-credential-revision" = jenkins_gitops_revision
+    }
     JCasC = {
       defaultConfig = true
       configScripts = {

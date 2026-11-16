@@ -44,6 +44,27 @@ only into the Kaniko container. Use this job with trusted SCM branches.
 The pipeline publishes from `main`; include `main` in branch discovery when
 enabling release builds.
 
+### GitOps credential
+
+Set `TF_VAR_gitops_github_token` in the environment of the Terraform process
+before applying `module.eks_cicd`. The username defaults to `KaloSora`; set
+`TF_VAR_gitops_github_username` if the token belongs to another account.
+Use a fine-grained token scoped to `KaloSora/AWS-EKS-GitOps` with Contents and
+Pull requests write permissions.
+
+Terraform stores the values in the `jenkins-gitops` Kubernetes Secret in the
+controller namespace. The controller's startup hook creates or updates only
+the `aws-eks-gitops` Username with password credential, using the token as the
+password. Helm gets only Secret references and a rollout marker.
+Changing the token or username rolls the controller so it reloads the
+credential. The credential is optional on fresh installs. To retire it,
+revoke the token and remove the Jenkins credential as well as unsetting the
+Terraform variable before applying again.
+
+The token is marked sensitive but is stored in Terraform state and plan
+artifacts with the current Terraform version. Limit access to the S3 state
+and any saved plans, and keep the token out of `dev.tfvars` and version control.
+
 When `eks_argocd_ingress_enabled` is true, Terraform creates a
 separate internet-facing HTTPS ALB Ingress for `jenkins.kalosora.live`, uses the
 configured ACM certificate, restricts inbound traffic to the configured
