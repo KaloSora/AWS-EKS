@@ -10,7 +10,12 @@ locals {
       component.config,
       {
         storage_class = var.storage_class_name
-      }
+      },
+      name == "jenkins" && local.jenkins_agent_enabled ? {
+        jenkins_agent_namespace       = kubernetes_service_account_v1.jenkins_agent[0].metadata[0].namespace
+        jenkins_agent_service_account = kubernetes_service_account_v1.jenkins_agent[0].metadata[0].name
+        jenkins_agent_pod_yaml        = file("${path.module}/pod_templates/aws-eks-app.yaml")
+      } : {}
     )
   }
 

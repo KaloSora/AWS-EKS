@@ -5,12 +5,19 @@ variable "eks_argocd_ingress_enabled" {
   nullable    = false
 }
 
+variable "jenkins_ecr_role_arn" {
+  description = "Existing IRSA role ARN for Jenkins builds that publish to ECR"
+  type        = string
+  default     = null
+}
+
 module "eks_cicd" {
   source = "./eks_cicd"
 
-  components         = { for name, component in var.eks_components : name => component if name != "karpenter" }
-  storage_class_name = module.eks_storage.storage_class_names.ebs
-  k8s_version        = var.eks_kubernetes_version
+  components           = { for name, component in var.eks_components : name => component if name != "karpenter" }
+  storage_class_name   = module.eks_storage.storage_class_names.ebs
+  k8s_version          = var.eks_kubernetes_version
+  jenkins_ecr_role_arn = var.jenkins_ecr_role_arn
 
   public_ingress = var.eks_argocd_ingress_enabled ? {
     ingress_class    = module.eks_ingress.ingress_class_name

@@ -40,6 +40,23 @@ ${yamlencode({
       }
     }
   }
+  # The chart creates the controller's agent scheduling RoleBinding here.
+  agent = {
+    namespace = jenkins_agent_namespace
+  }
+  additionalAgents = {
+    aws-eks-app = {
+      podName        = "aws-eks-app"
+      componentName  = "aws-eks-app-agent"
+      connectTimeout = 180
+      serviceAccount = jenkins_agent_service_account
+      image = {
+        repository = "jenkins/inbound-agent"
+        tag        = "latest-jdk21@sha256:c93e68c1b1a9e5c4cb8e459dfd0f7fc63b6dc86b47f12883b8231c85d2e4ca4d"
+      }
+      yamlTemplate = jenkins_agent_pod_yaml
+    }
+  }
   persistence = {
     enabled     = true
     storageClass = storage_class

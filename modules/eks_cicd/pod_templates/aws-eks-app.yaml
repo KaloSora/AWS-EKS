@@ -1,0 +1,64 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  annotations:
+    eks.amazonaws.com/skip-containers: "jnlp,maven,gitops"
+spec:
+  activeDeadlineSeconds: 3600
+  automountServiceAccountToken: false
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 1000
+    runAsGroup: 1000
+    fsGroup: 1000
+    seccompProfile:
+      type: RuntimeDefault
+  containers:
+    - name: jnlp
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+    - name: maven
+      image: maven:3.9-eclipse-temurin-21@sha256:99e61abcff91a9b1333463bd8451fb18495d6eba9250ac66a338b518f8278320
+      command: ["sleep", "3600"]
+      env:
+        - name: HOME
+          value: /home/jenkins/agent
+        - name: MAVEN_CONFIG
+          value: /home/jenkins/agent/.m2
+        - name: MAVEN_OPTS
+          value: -Duser.home=/home/jenkins/agent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+    - name: kaniko
+      image: ghcr.io/osscontainertools/kaniko:v1.29.1-debug@sha256:ebc38a988e5aa1aaea99240e931aeeeff9d8e6bb5a0bd0e00eaf79973bf0a773
+      command: ["/busybox/sleep", "3600"]
+      env:
+        - name: AWS_SDK_LOAD_CONFIG
+          value: "true"
+        - name: AWS_EC2_METADATA_DISABLED
+          value: "true"
+        - name: AWS_ECR_DISABLE_CACHE
+          value: "true"
+      securityContext:
+        # The sample Dockerfile uses adduser and COPY --chown.
+        runAsNonRoot: false
+        runAsUser: 0
+        runAsGroup: 0
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+          add: ["CHOWN", "DAC_OVERRIDE", "FOWNER", "SETUID", "SETGID"]
+    - name: gitops
+      image: python:3.12-bookworm
+      command: ["sleep", "3600"]
+      env:
+        - name: HOME
+          value: /home/jenkins/agent
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]

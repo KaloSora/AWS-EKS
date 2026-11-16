@@ -24,6 +24,26 @@ initialization reruns on upgrades to install declared plugins. Plugin versions
 and dependency resolution are pinned to avoid opportunistic latest-version
 updates.
 
+### Build agents
+
+The chart registers the `aws-eks-app` pod template from
+[`pod_templates/aws-eks-app.yaml`](pod_templates/aws-eks-app.yaml) through
+JCasC. Application Jenkinsfiles select it with `inheritFrom 'aws-eks-app'`.
+Terraform creates the `cicd-build` namespace and the
+`jenkins-ecr-publisher` service account before Helm configures the controller
+and the agent scheduling RBAC. Jenkins creates the pods when jobs run.
+The agent namespace audits and warns against the restricted Pod Security
+Standard because the Kaniko build container runs as UID 0.
+
+Set the root `jenkins_ecr_role_arn` variable before publishing to ECR. The
+existing role must trust the cluster's OIDC provider with audience
+`sts.amazonaws.com` and subject
+`system:serviceaccount:cicd-build:jenkins-ecr-publisher`, and its push
+permissions should be scoped to the intended ECR repository. IRSA is injected
+only into the Kaniko container. Use this job with trusted SCM branches.
+The pipeline publishes from `main`; include `main` in branch discovery when
+enabling release builds.
+
 When `eks_argocd_ingress_enabled` is true, Terraform creates a
 separate internet-facing HTTPS ALB Ingress for `jenkins.kalosora.live`, uses the
 configured ACM certificate, restricts inbound traffic to the configured

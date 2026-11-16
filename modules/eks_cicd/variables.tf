@@ -66,6 +66,17 @@ variable "k8s_version" {
   type        = string
 }
 
+variable "jenkins_ecr_role_arn" {
+  description = "Existing IRSA role ARN for the Jenkins ECR publisher service account"
+  type        = string
+  default     = null
+
+  validation {
+    condition     = var.jenkins_ecr_role_arn == null ? true : can(regex("^arn:aws(-[a-z0-9-]+)?:iam::[0-9]{12}:role/[^[:space:]]+$", var.jenkins_ecr_role_arn))
+    error_message = "jenkins_ecr_role_arn must be an IAM role ARN or null."
+  }
+}
+
 variable "public_ingress" {
   description = "Optional ALB and Route 53 settings for enabled public CI/CD components"
   type = object({
