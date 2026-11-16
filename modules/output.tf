@@ -23,4 +23,9 @@ output "jenkins_url" {
   value       = module.eks_cicd.jenkins_url
 }
 
+output "jenkins_ecr_role_arn" {
+  description = "IRSA role ARN used by Jenkins to publish images to ECR"
+  value       = module.eks_cicd.jenkins_ecr_role_arn
+}
+
 

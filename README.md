@@ -70,7 +70,7 @@ control is needed, with key and API costs reviewed separately.
 | 11 | `terraform apply -target=module.eks_ingress -var-file="dev.tfvars"` | Create AWS EKS Ingress |
 | 12 | `terraform apply -target=module.app -var-file="dev.tfvars"` | Create application namespace |
 | 13 | `terraform apply -target=module.karpenter -var-file="dev.tfvars"` | Install Karpenter and its configured node provisioning |
-| 14 | `terraform apply -target=module.eks_cicd -var-file="dev.tfvars"` | Install Argo CD, Jenkins, and their configured ingresses |
+| 14 | `terraform apply -target=module.eks_cicd -var-file="dev.tfvars"` | Install Argo CD and Jenkins, configure their ingresses, and create the Jenkins ECR role |
 
 ## Reference
 [Learn AWS EKS](https://docs.aws.amazon.com/eks/latest/userguide/learn-eks.html)

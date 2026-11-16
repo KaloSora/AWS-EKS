@@ -6,9 +6,16 @@ variable "eks_argocd_ingress_enabled" {
 }
 
 variable "jenkins_ecr_role_arn" {
-  description = "Existing IRSA role ARN for Jenkins builds that publish to ECR"
+  description = "Optional existing IRSA role ARN to use in place of the Terraform-managed Jenkins role"
   type        = string
   default     = null
+}
+
+variable "jenkins_ecr_repository_name" {
+  description = "Existing ECR repository in the EKS account and region that Jenkins can push to"
+  type        = string
+  default     = "aws-eks-app"
+  nullable    = false
 }
 
 variable "gitops_github_token" {
@@ -34,6 +41,12 @@ module "eks_cicd" {
   jenkins_ecr_role_arn   = var.jenkins_ecr_role_arn
   gitops_github_token    = var.gitops_github_token
   gitops_github_username = var.gitops_github_username
+
+  jenkins_ecr = {
+    cluster_arn       = module.eks.cluster_arn
+    oidc_provider_arn = module.eks.oidc_provider_arn
+    repository_name   = var.jenkins_ecr_repository_name
+  }
 
   public_ingress = var.eks_argocd_ingress_enabled ? {
     ingress_class    = module.eks_ingress.ingress_class_name

@@ -67,13 +67,44 @@ variable "k8s_version" {
 }
 
 variable "jenkins_ecr_role_arn" {
-  description = "Existing IRSA role ARN for the Jenkins ECR publisher service account"
+  description = "Optional existing role override for the Jenkins ECR publisher service account"
   type        = string
   default     = null
 
   validation {
     condition     = var.jenkins_ecr_role_arn == null ? true : can(regex("^arn:aws(-[a-z0-9-]+)?:iam::[0-9]{12}:role/[^[:space:]]+$", var.jenkins_ecr_role_arn))
     error_message = "jenkins_ecr_role_arn must be an IAM role ARN or null."
+  }
+}
+
+variable "jenkins_ecr" {
+  description = "Cluster identity and target ECR repository for the managed Jenkins IRSA role"
+  type = object({
+    cluster_arn       = string
+    oidc_provider_arn = string
+    repository_name   = string
+  })
+  default = null
+
+  validation {
+    condition = var.jenkins_ecr == null ? true : (
+      can(regex("^arn:aws(-[a-z0-9-]+)?:eks:[a-z0-9-]+:[0-9]{12}:cluster/[^/]+$", var.jenkins_ecr.cluster_arn)) &&
+      (var.jenkins_ecr.oidc_provider_arn == null ? true : can(regex(
+        "^arn:aws(-[a-z0-9-]+)?:iam::[0-9]{12}:oidc-provider/[^[:space:]]+$",
+        var.jenkins_ecr.oidc_provider_arn
+      )))
+    )
+    error_message = "jenkins_ecr requires an EKS cluster ARN and an IAM OIDC provider ARN when available."
+  }
+
+  validation {
+    condition = var.jenkins_ecr == null ? true : try(
+      length(var.jenkins_ecr.repository_name) >= 2 &&
+      length(var.jenkins_ecr.repository_name) <= 256 &&
+      can(regex("^[a-z0-9]+(([.]|_{1,2}|-+)[a-z0-9]+)*(/[a-z0-9]+(([.]|_{1,2}|-+)[a-z0-9]+)*)*$", var.jenkins_ecr.repository_name)),
+      false
+    )
+    error_message = "jenkins_ecr.repository_name must be a valid lowercase private ECR repository name."
   }
 }
 

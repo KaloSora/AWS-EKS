@@ -35,12 +35,21 @@ and the agent scheduling RBAC. Jenkins creates the pods when jobs run.
 The agent namespace audits and warns against the restricted Pod Security
 Standard because the Kaniko build container runs as UID 0.
 
-Set the root `jenkins_ecr_role_arn` variable before publishing to ECR. The
-existing role must trust the cluster's OIDC provider with audience
-`sts.amazonaws.com` and subject
-`system:serviceaccount:cicd-build:jenkins-ecr-publisher`, and its push
-permissions should be scoped to the intended ECR repository. IRSA is injected
-only into the Kaniko container. Use this job with trusted SCM branches.
+When Jenkins is enabled, the root configuration creates an IRSA role using the
+cluster IAM OIDC provider created with `eks_csi_enabled = true`. The role trusts
+only `system:serviceaccount:cicd-build:jenkins-ecr-publisher` with audience
+`sts.amazonaws.com`. The ServiceAccount uses the role automatically, and the
+root `jenkins_ecr_role_arn` output shows its ARN.
+
+Set `jenkins_ecr_repository_name` in `modules/dev.tfvars` to the existing target
+repository in the same AWS account and region as EKS. It defaults to
+`aws-eks-app`. Match the pipeline's ECR account, region and repository
+parameters to that repository. The role's push permissions are scoped to that
+repository. IAM requires `Resource = "*"` for `ecr:GetAuthorizationToken`.
+Terraform does not create the repository. An explicit root
+`jenkins_ecr_role_arn` input still selects an externally managed role.
+IRSA is injected only into the Kaniko container. Use this job with trusted
+SCM branches.
 The application Jenkinsfile runs ECR publication and GitOps updates only on
 `main`. With the development branch filter, this job runs branch verification
 builds only.

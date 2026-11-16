@@ -139,5 +139,8 @@ eks_components = {
   }
 }
 
+# Existing ECR repository in the cluster account and region for Jenkins image pushes.
+jenkins_ecr_repository_name = "aws-eks-app"
+
 # Expose Argo CD and Jenkins through HTTPS ALBs restricted to the public EKS API CIDRs.
 eks_argocd_ingress_enabled = true
